@@ -23,7 +23,7 @@ npm run lint
 
 ## What domovoi does NOT accept
 
-The library has a [locked design philosophy](docs/internal/PLAN.md): small core + clear extension points. Contributions that expand the public API surface require justification:
+The library has a deliberate design philosophy: small core + clear extension points. Contributions that expand the public API surface require justification:
 
 - New combinators on `Verdict` — most can be written in userspace; the library ships the minimum.
 - Sugar variants of existing factories — collapse to the primitive.
@@ -59,14 +59,15 @@ git push --force-with-lease
 
 ## Project structure
 
-See [docs/internal/PLAN.md](docs/internal/PLAN.md) for the full architecture and locked design decisions. Key directories:
-
 - `src/` — library source.
+- `src/engine/` — orchestrator, distribution loading, error recording, finalization.
 - `src/providers/` — Provider adapters (OpenAI, Ollama, openaiCompat).
 - `src/calibration/` — Calibrator factories.
 - `src/testing/` — `mockProvider` for users' tests.
 - `tests/` — unit + integration + type-level tests.
 - `examples/` — runnable usage examples.
+
+Architectural decisions and the rationale behind them live in commit messages, the changelog, and PR discussions — not in a separate design document.
 
 ## Code style
 

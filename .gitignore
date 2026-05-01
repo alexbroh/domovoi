@@ -47,3 +47,6 @@ yarn.lock
 # OS-specific
 .Trashes
 ehthumbs.db
+
+# Internal design notes (kept locally for maintainer reference; not public)
+docs/internal/

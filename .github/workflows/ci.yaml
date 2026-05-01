@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: Lint + Typecheck + Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint + format check
+        run: npm run check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  dco:
+    name: DCO sign-off check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify all commits are signed off
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          unsigned=$(git log --no-merges --format='%H %s' "$base..$head" | while read hash subj; do
+            if ! git log -1 --format='%B' "$hash" | grep -qE '^Signed-off-by: '; then
+              echo "$hash $subj"
+            fi
+          done)
+          if [ -n "$unsigned" ]; then
+            echo "::error::The following commits are missing DCO sign-off:"
+            echo "$unsigned"
+            echo ""
+            echo "Run 'git commit -s' or amend with 'git commit --amend --no-edit -s'."
+            exit 1
+          fi
+          echo "All commits signed off."

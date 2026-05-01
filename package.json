@@ -71,7 +71,7 @@
     "url": "https://github.com/alexbroh/domovoi/issues"
   },
   "dependencies": {
-    "openai": "^4.80.0",
+    "openai": "^6.35.0",
     "tiktoken": "^1.0.22"
   },
   "devDependencies": {

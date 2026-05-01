@@ -12,44 +12,33 @@ import { boolean as booleanVerb } from "./verbs/boolean.js";
 import { classifier as classifierFactory } from "./verbs/classifier.js";
 import { classify as classifyVerb } from "./verbs/classify.js";
 
-// ─── Type re-exports ────────────────────────────────────────────────
-
+export type { Cache, CacheStats, CacheWithStats } from "./cache.js";
+export {
+  BudgetExhaustedError,
+  ConfigError,
+  DomovoiError,
+  type ErrorCode,
+  ProviderError,
+} from "./errors.js";
 export type {
-  Verdict,
-  Classified,
-  Uncertain,
-  Unknown,
-  Filterable,
-  UnknownReason,
-  Distribution,
-  VerdictMeta,
-  SerializableError,
-  Thresholds,
   Budget,
+  Classified,
+  Distribution,
+  Filterable,
   PromptTemplate,
   ProviderCapabilities,
+  SerializableError,
+  Thresholds,
+  Uncertain,
+  Unknown,
+  UnknownReason,
+  Verdict,
+  VerdictMeta,
 } from "./types.js";
-
+export type { BooleanOptions } from "./verbs/boolean.js";
 export type { Classifier, ClassifierConfig } from "./verbs/classifier.js";
 export type { ClassifyOptions } from "./verbs/classify.js";
-export type { BooleanOptions } from "./verbs/boolean.js";
-export type { Cache, CacheStats, CacheWithStats } from "./cache.js";
-
-// ─── Verdict combinators ────────────────────────────────────────────
-
-export { match, isClassified, isUncertain, isUnknown, filter } from "./verdict.js";
-
-// ─── Errors ─────────────────────────────────────────────────────────
-
-export {
-  DomovoiError,
-  ProviderError,
-  ConfigError,
-  BudgetExhaustedError,
-  type ErrorCode,
-} from "./errors.js";
-
-// ─── Public namespace `domovoi.*` ───────────────────────────────────
+export { filter, isClassified, isUncertain, isUnknown, match } from "./verdict.js";
 
 /**
  * Top-level API surface — what users primarily import.

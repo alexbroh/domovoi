@@ -1,30 +1,18 @@
 /**
- * Construction-time and runtime validation.
- *
- * Construction-time (throws ConfigError):
- *   - validateSpace: empty / duplicate / whitespace-padded / singleton (J2)
- *   - validateThresholds: range and ordering (H1)
- *   - validateCalibratorCompatibility: Platt binary-only; multi-sample = identity-only
- *   - validateProviders: non-empty array (M1); chain-min top-K cap (lock #1)
- *   - validateClassifierName: regex /^[a-z][a-z0-9_]*$/ (G10)
- *
- * Runtime (throws ProviderError):
- *   - validateDistribution: coverage range, per-prob range, sum-to-1, missing-keys → 0 (L2)
+ * Construction-time validators throw `ConfigError`; the runtime
+ * `validateDistribution` (called by the engine after `Provider.sample` returns)
+ * throws `ProviderError`.
  */
 
 import { ConfigError, ProviderError } from "./errors.js";
 import type { Distribution, ProviderCapabilities, Thresholds } from "./types.js";
 
-// ─── Decision-space validation (J2) ─────────────────────────────────
-
 /**
- * Validate the decision space at construction. Throws ConfigError if any rule fails:
- * - No empty (post-NFC + trim) labels.
- * - No whitespace-padded labels (catches copy-paste errors).
- * - No duplicate labels (post-NFC normalize).
- * - No singleton spaces (length 1).
+ * Throws if the decision space contains: empty labels (post-NFC + trim),
+ * duplicates (post-NFC), whitespace-padded labels, or fewer than 2 entries.
  *
- * Note: T1 (`readonly [T, ...T[]]`) handles the empty-array case at the type level.
+ * The empty-array case is also rejected at the type level via the
+ * `readonly [T, ...T[]]` shape on classifier configs.
  */
 export function validateSpace(space: readonly string[]): void {
   if (space.length < 2) {
@@ -55,8 +43,6 @@ export function validateSpace(space: readonly string[]): void {
     seen.add(normalized);
   }
 }
-
-// ─── Threshold validation (H1) ──────────────────────────────────────
 
 /**
  * Validate threshold values at construction. Inclusive [0, 1] range; binary
@@ -108,8 +94,6 @@ function inRange01(name: string, value: number): void {
   }
 }
 
-// ─── Classifier name validation (G10) ───────────────────────────────
-
 const CLASSIFIER_NAME_REGEX = /^[a-z][a-z0-9_]*$/;
 
 export function validateClassifierName(name: string): void {
@@ -121,14 +105,11 @@ export function validateClassifierName(name: string): void {
   }
 }
 
-// ─── Provider chain validation (M1, lock #1) ────────────────────────
-
 /**
- * Validate the provider chain at construction.
- * - Non-empty array (M1).
- * - Chain-min top-K cap across `distributionSource: "logprobs"` providers (lock #1):
- *   space.length must not exceed the smallest maxTopLogprobs in the chain.
- *   `multi_sample` providers are exempt.
+ * Validates the provider chain. Throws if the array is empty, or if the
+ * decision space exceeds the smallest `maxTopLogprobs` across all
+ * `distributionSource: "logprobs"` providers in the chain (multi-sample
+ * providers have no top-K constraint and are exempt).
  */
 export function validateProviderChain(
   providers: ReadonlyArray<{ readonly id: string; readonly capabilities: ProviderCapabilities }>,
@@ -159,8 +140,6 @@ export function validateProviderChain(
   }
 }
 
-// ─── Calibrator compatibility (S3) ──────────────────────────────────
-
 /**
  * Validate calibrator vs provider chain capabilities at construction.
  * Multi-sample providers cannot use non-identity calibrators in v0.
@@ -179,19 +158,14 @@ export function validateCalibratorCompatibility(
   }
 }
 
-// ─── Runtime distribution validation (L2) ───────────────────────────
-
 const SUM_TOLERANCE = 0.001;
 
 /**
- * Validate Distribution at engine boundary post-`provider.sample`.
- *
- * - coverage ∈ [0, 1]
- * - each prob ∈ [0, 1]
- * - missing in-space labels → assigned 0 (per G2; mutates `probs`)
- * - sum of probs ≈ 1 within tolerance 0.001
- *
- * Catches buggy custom Provider implementations early. Throws ProviderError.
+ * Engine-side check on every Distribution returned by `Provider.sample`,
+ * before calibration. Verifies coverage and per-prob range, fills missing
+ * in-space labels with `0` (mutates `probs`), and asserts sum-to-one within
+ * a fixed tolerance. Throws `ProviderError` on violation — surfaces buggy
+ * custom Provider implementations.
  */
 export function validateDistribution<T extends string>(
   d: Distribution<T>,
@@ -203,7 +177,6 @@ export function validateDistribution<T extends string>(
     });
   }
 
-  // Per-prob range check (allow 0; engine fills missing keys)
   const probs = d.probs as Record<string, number | undefined>;
   for (const [label, prob] of Object.entries(probs)) {
     if (prob === undefined) continue;
@@ -215,14 +188,13 @@ export function validateDistribution<T extends string>(
     }
   }
 
-  // Fill missing in-space labels with 0 (G2). Mutate the probs map.
+  // Missing in-space labels (first-token outside provider top-K) get 0.
   for (const label of space) {
     if (!(label in probs)) {
       probs[label] = 0;
     }
   }
 
-  // Sum-to-1 within tolerance.
   let sum = 0;
   for (const label of space) {
     sum += probs[label] ?? 0;

@@ -1,26 +1,23 @@
 /**
- * Error class taxonomy for domovoi.
+ * Error taxonomy for domovoi.
  *
- * 4-class taxonomy with a `code` field for fine-grained discrimination.
- * All errors use ES2022 `Error.cause` chaining for debugging context.
+ * Four classes (`DomovoiError` base + `ProviderError`, `ConfigError`,
+ * `BudgetExhaustedError`) with a stable `code` field for fine-grained
+ * discrimination. All accept `{ cause }` for ES2022 chaining.
  *
- * The engine canonicalizes any non-DomovoiError thrown from `Provider.sample`
- * into `ProviderError({ cause })` so callers always see a known error type.
- *
- * Under default `onErrorPolicy: "fallback"`, operational errors (ProviderError,
- * BudgetExhaustedError, AbortError) are converted into `Unknown` Verdict variants
- * rather than thrown. Construction errors (ConfigError) always throw.
+ * The engine canonicalizes anything thrown from `Provider.sample` that isn't
+ * already a `DomovoiError` into `ProviderError({ cause })`, so callers always
+ * see a known error type. Under the default `onErrorPolicy: "fallback"`,
+ * runtime errors become `Unknown` Verdict variants rather than throw;
+ * `ConfigError` always throws.
  */
-
-// ─── Error code enum (string union) ─────────────────────────────────
 
 /**
- * Stable error codes for `ConfigError` and other DomovoiError subtypes.
- * Carry these in `error.code` for fine-grained discrimination instead of
- * `instanceof` checks (since C5 collapses former subclasses into one class).
+ * Stable error codes carried in `error.code`. Discriminate on these rather
+ * than on `instanceof` of removed-historical subclasses.
  */
 export type ErrorCode =
-  // Construction-time configuration errors (all surface as ConfigError)
+  // ConfigError — construction-time
   | "decision_space_collision"
   | "decision_space_too_large"
   | "missing_provider_config"
@@ -32,7 +29,7 @@ export type ErrorCode =
   | "invalid_thresholds"
   | "invalid_space"
   | "empty_providers"
-  // Runtime provider-call errors
+  // ProviderError — runtime
   | "provider_network"
   | "provider_rate_limit"
   | "provider_timeout"
@@ -40,12 +37,10 @@ export type ErrorCode =
   | "provider_server_error"
   | "provider_malformed_response"
   | "invalid_distribution"
-  // Runtime budget errors
+  // BudgetExhaustedError — runtime
   | "per_call_timeout"
   | "chain_timeout"
   | "max_calls";
-
-// ─── Base error class ───────────────────────────────────────────────
 
 export class DomovoiError extends Error {
   readonly code: string;
@@ -57,8 +52,6 @@ export class DomovoiError extends Error {
   }
 }
 
-// ─── Provider errors (runtime, wrap external SDK / network failures) ──
-
 export class ProviderError extends DomovoiError {
   constructor(message: string, options?: { code?: string; cause?: unknown }) {
     super(message, options);
@@ -66,16 +59,12 @@ export class ProviderError extends DomovoiError {
   }
 }
 
-// ─── Configuration errors (construction-time) ───────────────────────
-
 export class ConfigError extends DomovoiError {
   constructor(message: string, options?: { code?: string; cause?: unknown }) {
     super(message, options);
     this.name = "ConfigError";
   }
 }
-
-// ─── Budget errors (runtime, user-imposed limits hit) ───────────────
 
 export class BudgetExhaustedError extends DomovoiError {
   readonly attemptedProviders: readonly string[];
@@ -99,12 +88,10 @@ export class BudgetExhaustedError extends DomovoiError {
   }
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────
-
 /**
- * Engine canonicalization: wrap any non-DomovoiError thrown value into a
- * ProviderError with `cause` chained. UmbraError subtypes (and ProviderError
- * subclasses from external Provider impls) pass through unchanged.
+ * Wraps any non-DomovoiError thrown value in `ProviderError({ cause })`.
+ * `DomovoiError` subtypes — including `ProviderError` subclasses defined by
+ * external Provider implementations — pass through unchanged.
  */
 export function canonicalizeProviderThrow(thrown: unknown): DomovoiError {
   if (thrown instanceof DomovoiError) return thrown;
@@ -121,8 +108,8 @@ export function canonicalizeProviderThrow(thrown: unknown): DomovoiError {
 }
 
 /**
- * Convert any Error (or DomovoiError) into the JSON-safe SerializableError
- * shape used in Verdict.meta.providerErrors.
+ * Convert an Error to the JSON-safe shape stored in
+ * `Verdict.meta.providerErrors`. Cause chains are preserved recursively.
  */
 export function serializeError(err: unknown): {
   readonly name: string;

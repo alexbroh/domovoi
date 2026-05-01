@@ -3,43 +3,21 @@
  * lookup, in-flight dedup, signal merging, distribution validation,
  * per-caller calibration, threshold application, and fallback semantics.
  *
- * High-level flow (per docs/internal/PLAN.md G21):
- *
- *     if signal pre-aborted: return Unknown { cancelled }
- *     for each provider in chain:
- *       check chain timeout → Unknown { budget_exhausted } | throw
- *       check signal aborted → Unknown { cancelled }
- *       compute cacheKey
- *       merge signal := AbortSignal.any([userSignal, AbortSignal.timeout(perCallTimeoutMs)])
- *       try:
- *         distribution := cache.get(key) ?? in_flight_dedup(key, () => provider.sample(...))
- *         validateDistribution(distribution, space)
- *         calibrated := calibrator.apply(distribution)   // per-caller (G18)
- *         result := applyThresholds(calibrated, ...)
- *         match result {
- *           classified → return Verdict
- *           out_of_distribution → return Unknown
- *           uncertain → continue chain (return on last provider)
- *         }
- *       catch:
- *         if timeout signal aborted → Unknown { budget_exhausted } | throw
- *         if user signal aborted → Unknown { cancelled }
- *         else: ProviderError → record in meta, continue chain
- *     chain exhausted:
- *       if all errored → Unknown { provider_failure } | AggregateError
- *       else (last was Uncertain) → handled in loop
+ * Errors during the chain become `Unknown` Verdicts under the default
+ * `onErrorPolicy: "fallback"`; under `"throw"` policy they propagate as
+ * `BudgetExhaustedError` / `AbortError` / `AggregateError`.
  */
 
 import {
-  InFlight,
   computeCacheKey,
   deserializeCachedValue,
+  InFlight,
   serializeCachedValue,
 } from "../cache.js";
 import {
   BudgetExhaustedError,
-  ProviderError,
   canonicalizeProviderThrow,
+  ProviderError,
   serializeError,
 } from "../errors.js";
 import type { Provider } from "../providers/provider.js";
@@ -58,19 +36,15 @@ import {
   type DecideConfig,
 } from "./config.js";
 import { fireAndForget } from "./hooks.js";
-import { type MetaBuilder, buildMeta, buildMetaForFailure, makeMetaBuilder } from "./meta.js";
+import { buildMeta, buildMetaForFailure, type MetaBuilder, makeMetaBuilder } from "./meta.js";
 import { applyThresholds } from "./threshold.js";
 
-// ─── Engine-scoped in-flight dedup (shared across classifiers) ──────
-
 /**
- * Concurrent calls with the same cache key share a single in-flight Promise.
- * Different classifiers with different calibrators on the same key both get
- * the raw Distribution and apply their own calibrator per-caller (G18).
+ * Process-wide in-flight dedup. Concurrent calls with the same cache key
+ * share a single Promise; the *raw* Distribution is shared, while each caller
+ * still applies its own calibrator and thresholds.
  */
 const globalInFlight = new InFlight<Distribution<string>>();
-
-// ─── Per-attempt result discriminated union ─────────────────────────
 
 /**
  * Outcome of a single provider attempt within `decide()`. The orchestrator
@@ -84,8 +58,6 @@ type AttemptOutcome<T extends string> =
   | { kind: "lastUncertain"; verdict: Uncertain<T>; calibrated: Distribution<T> }
   | { kind: "continue"; calibrated?: Distribution<T> };
 
-// ─── Public entry point ─────────────────────────────────────────────
-
 export async function decide<T extends string>(
   formattedInput: string,
   config: DecideConfig<T>,
@@ -93,7 +65,6 @@ export async function decide<T extends string>(
 ): Promise<Verdict<T>> {
   const meta = makeMetaBuilder();
 
-  // Pre-aborted check (G15).
   const preAbort = abortReason(signal);
   if (preAbort !== undefined) {
     return makeCancelledFromMeta(meta, preAbort);
@@ -155,8 +126,6 @@ export async function decide<T extends string>(
   return finalizeChainExhausted(meta, lastCalibrated, attempts, config);
 }
 
-// ─── Private orchestration helpers ──────────────────────────────────
-
 type Limits = {
   perCallTimeoutMs: number;
   chainTimeoutMs: number;
@@ -195,8 +164,6 @@ function makeCancelledFromMeta<T extends string>(meta: MetaBuilder, reason: stri
     meta: buildMetaForFailure(meta),
   };
 }
-
-// ─── Per-provider attempt ───────────────────────────────────────────
 
 async function attemptProvider<T extends string>(
   provider: Provider,
@@ -237,14 +204,12 @@ async function attemptProvider<T extends string>(
     );
   }
 
-  // Validate; treat L2 violations as a recordable provider error.
   try {
     validateDistribution(distribution, config.space);
   } catch (err) {
     return recordValidationError(err, provider, meta, config, index, cacheKey);
   }
 
-  // Calibrate per-caller (G18) and apply thresholds.
   const calibrated = config.calibrator.apply(distribution);
   const result = applyThresholds(calibrated, config.thresholds, config.space);
 
@@ -272,7 +237,7 @@ async function attemptProvider<T extends string>(
     return { kind: "verdict", verdict };
   }
 
-  // Uncertain. Last provider in chain → return as final Verdict; else continue.
+  // Uncertain: last provider in the chain returns it; otherwise fall through.
   if (isLastProvider) {
     const verdict: Uncertain<T> = {
       kind: "uncertain",
@@ -352,8 +317,6 @@ async function fetchFresh<T extends string>(
   ) as Promise<Distribution<T>>;
 }
 
-// ─── Error handling helpers ─────────────────────────────────────────
-
 function handleDistributionError<T extends string>(
   err: unknown,
   provider: Provider,
@@ -365,7 +328,6 @@ function handleDistributionError<T extends string>(
   chainStartMs: number,
   cacheKey: string,
 ): AttemptOutcome<T> {
-  // Per-call timeout hit (merged via AbortSignal.timeout).
   if (timeoutSignal.aborted && isTimeoutAbort(timeoutSignal)) {
     const verdict = buildBudgetExhaustedVerdict<T>(
       meta,
@@ -382,14 +344,12 @@ function handleDistributionError<T extends string>(
     });
   }
 
-  // User-initiated cancel.
   const userAbort = abortReason(userSignal);
   if (userAbort !== undefined) {
     const verdict = buildCancelledVerdict<T>(meta, userAbort, provider);
     return { kind: "verdict", verdict };
   }
 
-  // Otherwise: ProviderError → record + continue chain.
   return recordProviderError(err, provider, meta, config, index, cacheKey);
 }
 
@@ -411,8 +371,8 @@ function recordProviderError<T extends string>(
     providerId: provider.id,
     attempt: index + 1,
   });
-  // Defensive: if the same key is in-flight in another classifier the dedup
-  // may have served the failed Promise — explicit forget allows retry.
+  // A concurrent caller in another classifier may have hit the same in-flight
+  // slot for this failed Promise — forgetting it lets that caller retry.
   globalInFlight.forget(cacheKey);
   return { kind: "continue" };
 }
@@ -436,15 +396,13 @@ function recordValidationError<T extends string>(
   return { kind: "continue" };
 }
 
-// ─── Chain-exhausted finalizer ──────────────────────────────────────
-
 function finalizeChainExhausted<T extends string>(
   meta: MetaBuilder,
   lastCalibrated: Distribution<T> | undefined,
   attempts: number,
   config: DecideConfig<T>,
 ): Verdict<T> {
-  // All providers errored — distinguish from chain_exhausted.
+  // Every provider erroring is distinct from "chain exhausted with Uncertain".
   const allErrored =
     lastCalibrated === undefined &&
     meta.providerErrors.length > 0 &&
@@ -467,8 +425,8 @@ function finalizeChainExhausted<T extends string>(
     return verdict;
   }
 
-  // Defensive — `lastUncertain` path inside the loop should already have
-  // returned. This only triggers in degenerate cases (e.g., maxCalls = 0).
+  // Reachable only in degenerate cases (e.g. `maxCalls: 0`); the in-loop
+  // `lastUncertain` path otherwise returns first.
   const verdict: Unknown<T> = {
     kind: "unknown",
     reason: {

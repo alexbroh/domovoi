@@ -16,7 +16,7 @@
  * variant since that's what the model emits at the first content position.
  */
 
-import { type Tiktoken, get_encoding } from "tiktoken";
+import { get_encoding, type Tiktoken } from "tiktoken";
 
 export type TokenizerId = "openai/cl100k_base";
 

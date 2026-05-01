@@ -1,32 +1,24 @@
 /**
- * Calibrator factories for domovoi v0.
+ * Built-in calibrator factories.
  *
- * - `identity`: pass-through; default.
- * - `temperatureScaling(T)`: p^(1/T) / Σ p_j^(1/T). Pure function on probabilities.
- *   Equivalent to scaling logits before softmax. Throws on T <= 0.
- * - `plattScaling({ a, b })`: binary-only sigmoid scaling. Throws at construction
- *   if invoked on a non-binary space.
+ *   - `identity` — pass-through; the default.
+ *   - `temperatureScaling(T)` — `p^(1/T) / Σ p_j^(1/T)`; equivalent to
+ *     scaling logits before softmax.
+ *   - `plattScaling({ a, b })` — sigmoid scaling; binary spaces only.
  *
- * Calibrator interface (public per C6):
- *   - apply(d): returns a new Distribution; MUST be pure / stateless.
- *   - kind: identifier; engine inspects to detect "identity" for compatibility checks.
- *
- * Calibrator.fit() and Calibrator.serialize() arrive in v1 with fitted calibrators.
+ * `Calibrator.apply` must be pure and stateless. The engine runs it
+ * per-caller after the Distribution is loaded from the cache, so impurity
+ * would leak across callers sharing a cache row.
  */
 
 import { ConfigError } from "../errors.js";
 import type { Distribution } from "../types.js";
 
-// ─── Public Calibrator interface ────────────────────────────────────
-
 export interface Calibrator {
-  /** Identifier; "identity" is a reserved special-case used by the engine. */
+  /** Identifier; `"identity"` is reserved and recognized by the engine. */
   readonly kind: string;
-  /** Pure function on Distribution. Stateless. */
   apply<T extends string>(d: Distribution<T>): Distribution<T>;
 }
-
-// ─── identity ───────────────────────────────────────────────────────
 
 export const identity: Calibrator = {
   kind: "identity",
@@ -35,22 +27,16 @@ export const identity: Calibrator = {
   },
 };
 
-// ─── temperatureScaling ─────────────────────────────────────────────
-
 /**
- * Temperature scaling: p_i_new = p_i^(1/T) / Σ_j p_j^(1/T).
+ *   - `T = 1` → identity.
+ *   - `T > 1` → softens (less peaked).
+ *   - `T < 1` → sharpens (more peaked).
  *
- * - T = 1 → identity.
- * - T > 1 → softens the distribution (less peaked).
- * - T < 1 → sharpens the distribution (more peaked).
- *
- * Mathematically equivalent to scaling logits before softmax. Operates directly
- * on probabilities; coverage is not changed.
- *
- * Throws ConfigError if T <= 0.
+ * Operates on probabilities (not logits) and leaves `coverage` unchanged.
+ * Throws `ConfigError` on `T <= 0`.
  *
  * @example
- *   calibrator: temperatureScaling(0.85)  // user-fitted on held-out eval set
+ *   calibrator: temperatureScaling(0.85)  // user-fit on held-out eval set
  */
 export function temperatureScaling(T: number): Calibrator {
   if (Number.isNaN(T) || T <= 0) {
@@ -62,7 +48,6 @@ export function temperatureScaling(T: number): Calibrator {
   return {
     kind: "temperature",
     apply<U extends string>(d: Distribution<U>): Distribution<U> {
-      // p^(1/T) / Σ p_j^(1/T): two-pass — scale, then renormalize.
       const scaledEntries = (Object.entries(d.probs) as [string, number][]).map(
         ([label, prob]) => [label, prob === 0 ? 0 : prob ** inverseT] as const,
       );
@@ -70,7 +55,7 @@ export function temperatureScaling(T: number): Calibrator {
         (running, [, scaledProb]) => running + scaledProb,
         0,
       );
-      // Defensive: if every prob is 0 (degenerate), pass through unchanged.
+      // Degenerate input (every prob is 0) — return as-is rather than divide by 0.
       if (partitionFn === 0) return d;
       const normalizedProbs = Object.fromEntries(
         scaledEntries.map(([label, scaledProb]) => [label, scaledProb / partitionFn] as const),
@@ -83,20 +68,13 @@ export function temperatureScaling(T: number): Calibrator {
   };
 }
 
-// ─── plattScaling ───────────────────────────────────────────────────
-
 /**
- * Platt scaling: sigmoid(a*z + b) where z is the logit of the positive-class
- * probability.
+ * Platt scaling: `sigmoid(a*z + b)` where `z = logit(p_pos)`.
  *
- * Binary-only by construction. The engine validates compatibility with the
- * decision space at construction; this factory itself doesn't know the space
- * size, so the validation happens in classifier construction (validate.ts).
- *
- * For a binary distribution {p0, p1}, treats `p1` (the second label
- * lexicographically — but engine uses user-given order) as the positive class.
- * Computes new positive-class probability via sigmoid(a*logit(p1) + b);
- * negative class is 1 - that.
+ * Binary-only — the second label in the distribution (in user-given order)
+ * is treated as the positive class. Construction-time space-size validation
+ * happens in the classifier; `apply()` re-checks at runtime as a defensive
+ * guard against direct misuse.
  */
 export function plattScaling(params: { a: number; b: number }): Calibrator {
   if (
@@ -115,7 +93,6 @@ export function plattScaling(params: { a: number; b: number }): Calibrator {
     apply<U extends string>(d: Distribution<U>): Distribution<U> {
       const labels = Object.keys(d.probs);
       if (labels.length !== 2) {
-        // Construction-time validation should have caught this; defensive guard at runtime.
         throw new ConfigError(
           `plattScaling is binary-only; got distribution with ${labels.length} labels.`,
           { code: "incompatible_calibrator" },
@@ -124,7 +101,7 @@ export function plattScaling(params: { a: number; b: number }): Calibrator {
       const [neg, pos] = labels as [string, string];
       const probs = d.probs as Record<string, number>;
       const pPos = probs[pos] ?? 0;
-      // Clamp to avoid log(0) / log(1) extremes.
+      // Clamp away from {0, 1} so `Math.log(p / (1 - p))` is finite.
       const eps = 1e-9;
       const clamped = Math.min(1 - eps, Math.max(eps, pPos));
       const logit = Math.log(clamped / (1 - clamped));
@@ -144,9 +121,6 @@ function sigmoid(x: number): number {
   return 1 / (1 + Math.exp(-x));
 }
 
-// ─── Helper for validate.ts ─────────────────────────────────────────
-
-/** Returns true iff the calibrator is the built-in identity (or behaves identically). */
 export function isIdentityCalibrator(c: Calibrator): boolean {
   return c.kind === "identity";
 }

@@ -7,8 +7,6 @@
 
 import type { Classified, Filterable, Uncertain, Unknown, Verdict } from "./types.js";
 
-// ─── Type guards ────────────────────────────────────────────────────
-
 export function isClassified<T extends string>(v: Verdict<T>): v is Classified<T> {
   return v.kind === "classified";
 }
@@ -20,8 +18,6 @@ export function isUncertain<T extends string>(v: Verdict<T>): v is Uncertain<T> 
 export function isUnknown<T extends string>(v: Verdict<T>): v is Unknown<T> {
   return v.kind === "unknown";
 }
-
-// ─── Exhaustive matcher ─────────────────────────────────────────────
 
 /**
  * Pattern-match against a Verdict. All three branches are required;
@@ -51,8 +47,6 @@ export function match<T extends string, R>(
       return handlers.unknown(v);
   }
 }
-
-// ─── Verdict.filter ─────────────────────────────────────────────────
 
 /**
  * Predicate-based domain-validity filter. The predicate sees `Filterable<T>`

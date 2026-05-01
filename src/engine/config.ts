@@ -21,12 +21,8 @@ import {
   validateThresholds,
 } from "../validate.js";
 
-// ─── Defaults ───────────────────────────────────────────────────────
-
 export const DEFAULT_PER_CALL_TIMEOUT_MS = 10_000;
 export const DEFAULT_CHAIN_TIMEOUT_MS = 30_000;
-
-// ─── DecideConfig — engine's internal contract ──────────────────────
 
 export type OnProviderErrorHook = (
   err: ProviderError,
@@ -50,13 +46,14 @@ export type DecideConfig<T extends string> = {
   readonly onErrorPolicy: "fallback" | "throw";
   readonly onProviderError?: OnProviderErrorHook;
   readonly hooks?: EngineHooks;
-  /** Provider-config hash for cache key (G1, M4). Empty `""` for no extra opts. */
+  /**
+   * Stable hash of provider-specific options that affect Distribution shape
+   * (e.g. `multiSampleN`). Mixed into the cache key so changing those opts is
+   * a cache miss. Empty string when the provider has no such options.
+   */
   readonly providerConfigHash: string;
-  /** Engine sends temperature: 0 in v0 (H2). */
   readonly temperature: number;
 };
-
-// ─── withDefaults builder ───────────────────────────────────────────
 
 export type DecideConfigInput<T extends string> = {
   readonly space: readonly T[];
@@ -74,10 +71,8 @@ export type DecideConfigInput<T extends string> = {
 };
 
 /**
- * Apply engine-level defaults (identity calibrator, fresh in-memory cache,
- * default prompt template, fallback error policy, provider_config_hash = "",
- * temperature: 0) to a partial config. Used by verbs to materialize a
- * DecideConfig from caller-facing options.
+ * Materialize a fully-defaulted `DecideConfig` from a partial input. Used by
+ * verbs to translate caller-facing options into the engine's internal shape.
  */
 export function withDefaults<T extends string>(input: DecideConfigInput<T>): DecideConfig<T> {
   return {
@@ -97,8 +92,6 @@ export function withDefaults<T extends string>(input: DecideConfigInput<T>): Dec
   };
 }
 
-// ─── Construction-time validation ───────────────────────────────────
-
 export type ValidateClassifierConfigInput<T extends string> = {
   readonly name?: string;
   readonly space: readonly T[];
@@ -108,21 +101,12 @@ export type ValidateClassifierConfigInput<T extends string> = {
 };
 
 /**
- * Validate a classifier configuration at construction. Throws ConfigError
- * with appropriate `code` on any validation failure.
+ * Validate a classifier configuration at construction. Throws `ConfigError`
+ * with the relevant `code` on first failure; never partially configures.
  *
- * Validation order (each step throws ConfigError on failure):
- *   1. `name` (G10): regex-shape check
- *   2. `space` (J2): empty / duplicate / whitespace / singleton
- *   3. `providers` chain (M1, lock #1): non-empty + chain-min top-K cap
- *   4. `thresholds` (H1): range + binary deadband ordering
- *   5. `calibrator` × providers (S3): multi_sample = identity-only
- *   6. Each provider's optional `validate(space)` hook — gives tokenizer-aware
- *      adapters (e.g., OpenAI) the chance to detect first-token collisions
- *      eagerly at classifier construction rather than lazily on first sample.
- *
- * Used by `classifier({...})` and by one-shot verbs (which validate lazily on
- * first call).
+ * Each registered provider's optional `validate(space)` hook fires last —
+ * giving tokenizer-aware adapters (e.g. OpenAI) a chance to surface
+ * first-token collisions eagerly, before any network I/O.
  */
 export function validateClassifierConfig<T extends string>(
   input: ValidateClassifierConfigInput<T>,
@@ -132,9 +116,6 @@ export function validateClassifierConfig<T extends string>(
   validateProviderChain(input.providers, input.space.length);
   validateThresholds(input.thresholds, input.space.length);
   validateCalibratorCompatibility(isIdentityCalibrator(input.calibrator), input.providers);
-  // for-of: side-effect iteration; if any provider's validate throws, the
-  // exception propagates immediately (which forEach also supports, but for-of
-  // gives cleaner stack traces and matches modern TS conventions).
   for (const provider of input.providers) {
     provider.validate?.(input.space);
   }

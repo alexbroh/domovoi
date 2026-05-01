@@ -12,11 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const createMock = vi.hoisted(() => vi.fn());
 
 vi.mock("openai", () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      chat: { completions: { create: createMock } },
-    })),
-  };
+  class MockOpenAI {
+    chat = { completions: { create: createMock } };
+  }
+  return { default: MockOpenAI, OpenAI: MockOpenAI };
 });
 
 import { ConfigError } from "../../src/errors.js";

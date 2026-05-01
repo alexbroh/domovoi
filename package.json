@@ -1,0 +1,85 @@
+{
+  "name": "domovoi",
+  "version": "0.0.0",
+  "description": "Typed-uncertainty classification for TypeScript. Bind a domovoi to your code; receive Verdicts with calibrated probability and structured failure modes.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./providers": {
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js"
+    },
+    "./calibration": {
+      "types": "./dist/calibration/index.d.ts",
+      "import": "./dist/calibration/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:types": "vitest run --typecheck",
+    "prepublishOnly": "npm run check && npm run typecheck && npm test && npm run build"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "classification",
+    "classifier",
+    "llm",
+    "typed",
+    "uncertainty",
+    "calibrated",
+    "openai",
+    "ollama",
+    "anthropic",
+    "vllm",
+    "embeddings",
+    "logprobs",
+    "discriminated-union"
+  ],
+  "author": "Alex Roh",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexbroh/domovoi.git"
+  },
+  "homepage": "https://github.com/alexbroh/domovoi#readme",
+  "bugs": {
+    "url": "https://github.com/alexbroh/domovoi/issues"
+  },
+  "dependencies": {
+    "openai": "^4.80.0",
+    "tiktoken": "^1.0.18"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.10.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.8"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  }
+}

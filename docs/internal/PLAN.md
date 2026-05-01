@@ -767,3 +767,18 @@ examples/
 - **Service/sidecar form factor** — explicitly not v0.
 - **Continuous decision spaces** — regression-style is a different abstraction.
 - **Few-shot prompting / input truncation** — v0 takes input verbatim.
+
+## Docs site & README brevity (deferred — held 2026-05-01)
+
+**Decision:** the README at v0.1 is intentionally ~250 lines and carries reference detail that mature libraries push to a docs site. Compared against LangGraph's 82-line README, ours is ~3× longer, but every section earns its place because we have no docs site to link to.
+
+**Held until v0.2 lands:** a `docs/` folder migration (or a real docs site at `domovoi.dev`) that moves Local LLMs / Cancellation / Calibration / Cache / Extension points / Provider chain / Env contract to standalone reference pages. README becomes a navigation hub that:
+
+- leads with the brand-forward hook + immediate code + `That's it.` beat (already in v0.1)
+- keeps Where this fits + Before/after + Why typed Verdicts (positioning, not reference)
+- replaces the seven reference sections with one-line pointers to `docs/<topic>.md`
+- targets ~150 lines total (Zod-shape, not LangGraph-shape — we still want the differentiator copy)
+
+**Why deferred (not pre-v0.1):** docs migration benefits from the v0.2 ambient-context primitive being designed and shipped first, so the docs/ pages aren't immediately stale when `domovoi.scope` lands. Doing it now means rewriting most pages in 2-3 weeks. Doing it after v0.2 is one pass.
+
+**Trigger to revisit:** when v0.2 lands, or when the user purchases `domovoi.dev` and wants a real docs landing page.

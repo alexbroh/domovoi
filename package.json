@@ -34,6 +34,7 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
+    "typecheck:examples": "tsc --noEmit -p tsconfig.examples.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:types": "vitest run --typecheck",

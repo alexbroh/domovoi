@@ -20,71 +20,82 @@ import { domovoi, isClassified, isUnknown } from "../src/index.js";
 import { mockProvider } from "../src/testing/index.js";
 import type { Distribution, SampleOptions } from "../src/types.js";
 
-const ABC = ["a", "b", "c"] as const;
+type ABCLabel = "a" | "b" | "c";
+const ABC_SPACE = ["a", "b", "c"] as const satisfies readonly [ABCLabel, ABCLabel, ABCLabel];
 
-function dist<T extends string>(probs: Record<T, number>, coverage = 1): Distribution<T> {
+const DEFAULT_THRESHOLDS = { high: 0.7, coverageMin: 0.5 } as const;
+
+function makeDistribution<T extends string>(
+  probs: Record<T, number>,
+  coverage = 1,
+): Distribution<T> {
   return { probs: probs as Distribution<T>["probs"], coverage };
 }
 
-function delay(ms: number, signal?: AbortSignal): Promise<void> {
+/**
+ * setTimeout wrapped in a Promise that respects AbortSignal. Used to make
+ * mock providers simulate slow/hanging API calls that respect engine-supplied
+ * cancellation signals.
+ */
+function delayWithCancellation(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     if (signal?.aborted) {
-      const reason = signal.reason;
-      if (reason instanceof Error) reject(reason);
-      else reject(new Error(typeof reason === "string" ? reason : "aborted"));
+      reject(toError(signal.reason));
       return;
     }
     const timer = setTimeout(resolve, ms);
-    if (signal !== undefined) {
-      signal.addEventListener("abort", () => {
-        clearTimeout(timer);
-        const reason = signal.reason;
-        if (reason instanceof Error) reject(reason);
-        else reject(new Error(typeof reason === "string" ? reason : "aborted"));
-      });
-    }
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(toError(signal.reason));
+    });
   });
+}
+
+function toError(reason: unknown): Error {
+  if (reason instanceof Error) return reason;
+  return new Error(typeof reason === "string" ? reason : "aborted");
 }
 
 describe("pre-aborted signal (G15)", () => {
   it("returns Unknown { cancelled, reason } before any provider call", async () => {
-    let providerCalled = false;
-    const c = domovoi.classifier({
-      space: ABC,
-      thresholds: { high: 0.7, coverageMin: 0.5 },
+    let providerWasCalled = false;
+    const classifier = domovoi.classifier({
+      space: ABC_SPACE,
+      thresholds: DEFAULT_THRESHOLDS,
       providers: [
         mockProvider({
           behavior: () => {
-            providerCalled = true;
-            return dist({ a: 1, b: 0, c: 0 }, 1);
+            providerWasCalled = true;
+            return makeDistribution<ABCLabel>({ a: 1, b: 0, c: 0 }, 1);
           },
         }),
       ],
     });
-    const ctrl = new AbortController();
-    ctrl.abort("user navigated away");
-    const v = await c("input", { signal: ctrl.signal });
-    expect(providerCalled).toBe(false);
-    expect(isUnknown(v)).toBe(true);
-    if (isUnknown(v) && v.reason.type === "cancelled") {
-      expect(v.reason.reason).toBe("user navigated away");
+    const controller = new AbortController();
+    controller.abort("user navigated away");
+    const verdict = await classifier("input", { signal: controller.signal });
+    expect(providerWasCalled).toBe(false);
+    expect(isUnknown(verdict)).toBe(true);
+    if (isUnknown(verdict) && verdict.reason.type === "cancelled") {
+      expect(verdict.reason.reason).toBe("user navigated away");
     } else {
       expect.fail("expected Unknown { cancelled }");
     }
   });
 
   it("uses 'aborted' as default reason when controller.abort() called without args", async () => {
-    const c = domovoi.classifier({
-      space: ABC,
-      thresholds: { high: 0.7, coverageMin: 0.5 },
-      providers: [mockProvider({ behavior: () => dist({ a: 1, b: 0, c: 0 }, 1) })],
+    const classifier = domovoi.classifier({
+      space: ABC_SPACE,
+      thresholds: DEFAULT_THRESHOLDS,
+      providers: [
+        mockProvider({ behavior: () => makeDistribution<ABCLabel>({ a: 1, b: 0, c: 0 }, 1) }),
+      ],
     });
-    const ctrl = new AbortController();
-    ctrl.abort(); // no reason
-    const v = await c("input", { signal: ctrl.signal });
-    if (isUnknown(v) && v.reason.type === "cancelled") {
-      // Reason may be "aborted" (string) or a DOMException message.
-      expect(typeof v.reason.reason).toBe("string");
+    const controller = new AbortController();
+    controller.abort();
+    const verdict = await classifier("input", { signal: controller.signal });
+    if (isUnknown(verdict) && verdict.reason.type === "cancelled") {
+      expect(typeof verdict.reason.reason).toBe("string");
     } else {
       expect.fail("expected Unknown { cancelled }");
     }
@@ -93,216 +104,219 @@ describe("pre-aborted signal (G15)", () => {
 
 describe("mid-call user abort (G15)", () => {
   it("returns Unknown { cancelled } when abort fires during provider.sample", async () => {
-    const ctrl = new AbortController();
-    let providerWasAborted = false;
-    const c = domovoi.classifier({
-      space: ABC,
-      thresholds: { high: 0.7, coverageMin: 0.5 },
+    const controller = new AbortController();
+    let providerSawAbort = false;
+    const classifier = domovoi.classifier({
+      space: ABC_SPACE,
+      thresholds: DEFAULT_THRESHOLDS,
       providers: [
         mockProvider({
-          behavior: async (_input, _space, opts: SampleOptions) => {
+          behavior: async (_input, _space, sampleOpts: SampleOptions) => {
             try {
-              await delay(500, opts.signal);
-              return dist({ a: 1, b: 0, c: 0 }, 1);
-            } catch (err) {
-              providerWasAborted = true;
-              throw err;
+              await delayWithCancellation(500, sampleOpts.signal);
+              return makeDistribution<ABCLabel>({ a: 1, b: 0, c: 0 }, 1);
+            } catch (abortErr) {
+              providerSawAbort = true;
+              throw abortErr;
             }
           },
         }),
       ],
     });
 
-    const promise = c("input", { signal: ctrl.signal });
-    setTimeout(() => ctrl.abort("user clicked cancel"), 10);
-    const v = await promise;
+    const verdictPromise = classifier("input", { signal: controller.signal });
+    setTimeout(() => controller.abort("user clicked cancel"), 10);
+    const verdict = await verdictPromise;
 
-    expect(providerWasAborted).toBe(true);
-    if (isUnknown(v) && v.reason.type === "cancelled") {
-      expect(v.reason.reason).toBe("user clicked cancel");
+    expect(providerSawAbort).toBe(true);
+    if (isUnknown(verdict) && verdict.reason.type === "cancelled") {
+      expect(verdict.reason.reason).toBe("user clicked cancel");
     } else {
-      expect.fail(`expected Unknown { cancelled }; got ${JSON.stringify(v)}`);
+      expect.fail(`expected Unknown { cancelled }; got ${JSON.stringify(verdict)}`);
     }
   });
 });
 
 describe("per-call timeout via AbortSignal.timeout merge (K2)", () => {
   it("returns Unknown { budget_exhausted, scope: 'per_call_timeout' } under default policy", async () => {
-    const c = domovoi.classifier({
-      space: ABC,
-      thresholds: { high: 0.7, coverageMin: 0.5 },
+    const classifier = domovoi.classifier({
+      space: ABC_SPACE,
+      thresholds: DEFAULT_THRESHOLDS,
       budget: { perCallTimeoutMs: 50 },
       providers: [
         mockProvider({
-          behavior: async (_input, _space, opts: SampleOptions) => {
-            // Provider hangs longer than per-call timeout.
-            await delay(500, opts.signal);
-            return dist({ a: 1, b: 0, c: 0 }, 1);
+          behavior: async (_input, _space, sampleOpts: SampleOptions) => {
+            await delayWithCancellation(500, sampleOpts.signal);
+            return makeDistribution<ABCLabel>({ a: 1, b: 0, c: 0 }, 1);
           },
         }),
       ],
     });
-    const v = await c("input");
-    if (isUnknown(v) && v.reason.type === "budget_exhausted") {
-      expect(v.reason.scope).toBe("per_call_timeout");
+    const verdict = await classifier("input");
+    if (isUnknown(verdict) && verdict.reason.type === "budget_exhausted") {
+      expect(verdict.reason.scope).toBe("per_call_timeout");
     } else {
       expect.fail(
-        `expected Unknown { budget_exhausted, per_call_timeout }; got ${JSON.stringify(v)}`,
+        `expected Unknown { budget_exhausted, per_call_timeout }; got ${JSON.stringify(verdict)}`,
       );
     }
   });
 
   it("throws BudgetExhaustedError under onErrorPolicy: 'throw'", async () => {
-    const c = domovoi.classifier({
-      space: ABC,
-      thresholds: { high: 0.7, coverageMin: 0.5 },
+    const classifier = domovoi.classifier({
+      space: ABC_SPACE,
+      thresholds: DEFAULT_THRESHOLDS,
       budget: { perCallTimeoutMs: 50 },
       onErrorPolicy: "throw",
       providers: [
         mockProvider({
-          behavior: async (_input, _space, opts: SampleOptions) => {
-            await delay(500, opts.signal);
-            return dist({ a: 1, b: 0, c: 0 }, 1);
+          behavior: async (_input, _space, sampleOpts: SampleOptions) => {
+            await delayWithCancellation(500, sampleOpts.signal);
+            return makeDistribution<ABCLabel>({ a: 1, b: 0, c: 0 }, 1);
           },
         }),
       ],
     });
     try {
-      await c("input");
+      await classifier("input");
       expect.fail("expected BudgetExhaustedError");
-    } catch (err) {
-      expect(err).toBeInstanceOf(BudgetExhaustedError);
-      expect((err as BudgetExhaustedError).scope).toBe("per_call_timeout");
+    } catch (caughtErr) {
+      expect(caughtErr).toBeInstanceOf(BudgetExhaustedError);
+      expect((caughtErr as BudgetExhaustedError).scope).toBe("per_call_timeout");
     }
   });
 
   it("user signal beats timeout signal: cancelled takes precedence over budget_exhausted", async () => {
-    const ctrl = new AbortController();
-    const c = domovoi.classifier({
-      space: ABC,
-      thresholds: { high: 0.7, coverageMin: 0.5 },
-      budget: { perCallTimeoutMs: 1000 }, // long timeout
+    const controller = new AbortController();
+    const classifier = domovoi.classifier({
+      space: ABC_SPACE,
+      thresholds: DEFAULT_THRESHOLDS,
+      budget: { perCallTimeoutMs: 1000 },
       providers: [
         mockProvider({
-          behavior: async (_input, _space, opts: SampleOptions) => {
-            await delay(2000, opts.signal);
-            return dist({ a: 1, b: 0, c: 0 }, 1);
+          behavior: async (_input, _space, sampleOpts: SampleOptions) => {
+            await delayWithCancellation(2000, sampleOpts.signal);
+            return makeDistribution<ABCLabel>({ a: 1, b: 0, c: 0 }, 1);
           },
         }),
       ],
     });
-    const promise = c("input", { signal: ctrl.signal });
-    setTimeout(() => ctrl.abort("user cancelled first"), 20);
-    const v = await promise;
-    if (isUnknown(v) && v.reason.type === "cancelled") {
-      expect(v.reason.reason).toBe("user cancelled first");
+    const verdictPromise = classifier("input", { signal: controller.signal });
+    setTimeout(() => controller.abort("user cancelled first"), 20);
+    const verdict = await verdictPromise;
+    if (isUnknown(verdict) && verdict.reason.type === "cancelled") {
+      expect(verdict.reason.reason).toBe("user cancelled first");
     } else {
-      expect.fail(`expected Unknown { cancelled }; got ${JSON.stringify(v)}`);
+      expect.fail(`expected Unknown { cancelled }; got ${JSON.stringify(verdict)}`);
     }
   });
 });
 
 describe("chain timeout (R9)", () => {
-  it("returns Unknown { budget_exhausted, scope: 'chain_timeout' } when wall-clock exceeds chainTimeoutMs at iteration boundary", async () => {
+  it("refuses to start the next provider iteration after wall-clock exceeds chainTimeoutMs", async () => {
     // Engine checks chain budget at the START of each provider iteration (not
     // mid-call; per-call timeout handles in-flight bounds). To trigger
     // chain_timeout we need an earlier provider to consume the entire budget,
     // then verify the engine refuses to start the next iteration.
-    let p2Started = false;
-    const c = domovoi.classifier({
-      space: ABC,
-      thresholds: { high: 0.7, coverageMin: 0.5 },
+    let secondProviderStarted = false;
+    const classifier = domovoi.classifier({
+      space: ABC_SPACE,
+      thresholds: DEFAULT_THRESHOLDS,
       budget: { chainTimeoutMs: 50, perCallTimeoutMs: 10_000 },
       providers: [
         mockProvider({
           behavior: async () => {
             // p1 takes 80ms — past the 50ms chain budget — then returns Uncertain.
-            await new Promise((r) => setTimeout(r, 80));
-            return dist({ a: 0.5, b: 0.3, c: 0.2 }, 0.95);
+            await new Promise((resolve) => setTimeout(resolve, 80));
+            return makeDistribution<ABCLabel>({ a: 0.5, b: 0.3, c: 0.2 }, 0.95);
           },
           id: "mock/p1",
         }),
         mockProvider({
           behavior: () => {
-            p2Started = true;
-            return dist({ a: 0.9, b: 0.05, c: 0.05 }, 0.95);
+            secondProviderStarted = true;
+            return makeDistribution<ABCLabel>({ a: 0.9, b: 0.05, c: 0.05 }, 0.95);
           },
           id: "mock/p2",
         }),
       ],
     });
-    const v = await c("input");
-    expect(p2Started).toBe(false);
-    if (isUnknown(v) && v.reason.type === "budget_exhausted") {
-      expect(v.reason.scope).toBe("chain_timeout");
+    const verdict = await classifier("input");
+    expect(secondProviderStarted).toBe(false);
+    if (isUnknown(verdict) && verdict.reason.type === "budget_exhausted") {
+      expect(verdict.reason.scope).toBe("chain_timeout");
     } else {
-      expect.fail(`expected Unknown { budget_exhausted, chain_timeout }; got ${JSON.stringify(v)}`);
+      expect.fail(
+        `expected Unknown { budget_exhausted, chain_timeout }; got ${JSON.stringify(verdict)}`,
+      );
     }
   });
 });
 
 describe("maxCalls cap (R9)", () => {
   it("limits the number of provider attempts", async () => {
-    const calls: string[] = [];
-    const makeMock = (id: string) =>
+    const providerInvocations: string[] = [];
+    const makeUncertainProvider = (id: string) =>
       mockProvider({
         behavior: () => {
-          calls.push(id);
-          return dist({ a: 0.5, b: 0.3, c: 0.2 }, 0.95); // always Uncertain
+          providerInvocations.push(id);
+          return makeDistribution<ABCLabel>({ a: 0.5, b: 0.3, c: 0.2 }, 0.95);
         },
         id,
       });
-    const c = domovoi.classifier({
-      space: ABC,
-      thresholds: { high: 0.7, coverageMin: 0.5 },
+    const classifier = domovoi.classifier({
+      space: ABC_SPACE,
+      thresholds: DEFAULT_THRESHOLDS,
       budget: { maxCalls: 2 },
-      providers: [makeMock("mock/p1"), makeMock("mock/p2"), makeMock("mock/p3")],
+      providers: [
+        makeUncertainProvider("mock/p1"),
+        makeUncertainProvider("mock/p2"),
+        makeUncertainProvider("mock/p3"),
+      ],
     });
-    await c("input");
-    // Engine should stop after 2 attempts, not 3.
-    expect(calls).toEqual(["mock/p1", "mock/p2"]);
+    await classifier("input");
+    expect(providerInvocations).toEqual(["mock/p1", "mock/p2"]);
   });
 });
 
 describe(".batch cancellation (G15)", () => {
   it("returns partial results: finished Verdicts + Unknown { cancelled } for unfinished", async () => {
-    const ctrl = new AbortController();
-    const c = domovoi.classifier({
-      space: ABC,
-      thresholds: { high: 0.7, coverageMin: 0.5 },
+    const fastItemThresholdIndex = 2;
+    const controller = new AbortController();
+    const classifier = domovoi.classifier({
+      space: ABC_SPACE,
+      thresholds: DEFAULT_THRESHOLDS,
       providers: [
         mockProvider({
-          behavior: async (input: string, _space, opts: SampleOptions) => {
-            // First two complete fast; rest hang waiting on signal.
-            const idx = Number(input.split("-")[1] ?? "0");
-            if (idx < 2) {
-              return dist({ a: 0.9, b: 0.05, c: 0.05 }, 0.95);
+          behavior: async (input: string, _space, sampleOpts: SampleOptions) => {
+            const itemIndex = Number(input.split("-")[1] ?? "0");
+            if (itemIndex < fastItemThresholdIndex) {
+              return makeDistribution<ABCLabel>({ a: 0.9, b: 0.05, c: 0.05 }, 0.95);
             }
-            await delay(2000, opts.signal);
-            return dist({ a: 0.9, b: 0.05, c: 0.05 }, 0.95);
+            await delayWithCancellation(2000, sampleOpts.signal);
+            return makeDistribution<ABCLabel>({ a: 0.9, b: 0.05, c: 0.05 }, 0.95);
           },
         }),
       ],
     });
     const items = ["item-0", "item-1", "item-2", "item-3", "item-4"];
-    const promise = c.batch(items, { signal: ctrl.signal, concurrency: 2 });
-    setTimeout(() => ctrl.abort("batch deadline"), 50);
-    const results = await promise;
-    expect(results).toHaveLength(items.length);
-    // First two finished (Classified).
-    expect(isClassified(results[0]!)).toBe(true);
-    expect(isClassified(results[1]!)).toBe(true);
-    // Remaining became Unknown { cancelled } as the abort propagated.
-    for (let i = 2; i < items.length; i++) {
-      const r = results[i];
-      if (r === undefined) {
-        expect.fail(`results[${i}] missing`);
+    const batchPromise = classifier.batch(items, { signal: controller.signal, concurrency: 2 });
+    setTimeout(() => controller.abort("batch deadline"), 50);
+    const verdicts = await batchPromise;
+
+    expect(verdicts).toHaveLength(items.length);
+    expect(isClassified(verdicts[0]!)).toBe(true);
+    expect(isClassified(verdicts[1]!)).toBe(true);
+    for (let itemIndex = fastItemThresholdIndex; itemIndex < items.length; itemIndex++) {
+      const verdict = verdicts[itemIndex];
+      if (verdict === undefined) {
+        expect.fail(`verdicts[${itemIndex}] missing`);
       }
-      expect(isUnknown(r!)).toBe(true);
-      if (isUnknown(r!) && r!.reason.type === "cancelled") {
-        // Reason propagated.
-      } else {
-        expect.fail(`results[${i}] expected Unknown { cancelled }; got ${JSON.stringify(r)}`);
+      expect(isUnknown(verdict!)).toBe(true);
+      if (isUnknown(verdict!) && verdict!.reason.type !== "cancelled") {
+        expect.fail(
+          `verdicts[${itemIndex}] expected Unknown { cancelled }; got ${JSON.stringify(verdict)}`,
+        );
       }
     }
   });

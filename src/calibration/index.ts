@@ -14,8 +14,8 @@
  * Calibrator.fit() and Calibrator.serialize() arrive in v1 with fitted calibrators.
  */
 
-import { ConfigError } from "../errors.ts";
-import type { Distribution } from "../types.ts";
+import { ConfigError } from "../errors.js";
+import type { Distribution } from "../types.js";
 
 // ─── Public Calibrator interface ────────────────────────────────────
 
@@ -54,10 +54,9 @@ export const identity: Calibrator = {
  */
 export function temperatureScaling(T: number): Calibrator {
   if (Number.isNaN(T) || T <= 0) {
-    throw new ConfigError(
-      `temperatureScaling(T): T must be > 0; got ${T}.`,
-      { code: "incompatible_calibrator" },
-    );
+    throw new ConfigError(`temperatureScaling(T): T must be > 0; got ${T}.`, {
+      code: "incompatible_calibrator",
+    });
   }
   const inverseT = 1 / T;
   return {

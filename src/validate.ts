@@ -12,8 +12,8 @@
  *   - validateDistribution: coverage range, per-prob range, sum-to-1, missing-keys → 0 (L2)
  */
 
-import { ConfigError, ProviderError } from "./errors.ts";
-import type { Distribution, ProviderCapabilities, Thresholds } from "./types.ts";
+import { ConfigError, ProviderError } from "./errors.js";
+import type { Distribution, ProviderCapabilities, Thresholds } from "./types.js";
 
 // ─── Decision-space validation (J2) ─────────────────────────────────
 
@@ -28,10 +28,9 @@ import type { Distribution, ProviderCapabilities, Thresholds } from "./types.ts"
  */
 export function validateSpace(space: ReadonlyArray<string>): void {
   if (space.length < 2) {
-    throw new ConfigError(
-      `Decision space must have at least 2 labels; got ${space.length}.`,
-      { code: "invalid_space" },
-    );
+    throw new ConfigError(`Decision space must have at least 2 labels; got ${space.length}.`, {
+      code: "invalid_space",
+    });
   }
   const seen = new Set<string>();
   for (let i = 0; i < space.length; i++) {
@@ -49,10 +48,9 @@ export function validateSpace(space: ReadonlyArray<string>): void {
       });
     }
     if (seen.has(normalized)) {
-      throw new ConfigError(
-        `Decision space contains duplicate label: ${JSON.stringify(label)}.`,
-        { code: "invalid_space" },
-      );
+      throw new ConfigError(`Decision space contains duplicate label: ${JSON.stringify(label)}.`, {
+        code: "invalid_space",
+      });
     }
     seen.add(normalized);
   }
@@ -94,10 +92,9 @@ export function validateThresholds<S extends ReadonlyArray<string>>(
   } else {
     if (t.margin !== undefined) {
       if (t.margin < 0 || t.margin > 1 || Number.isNaN(t.margin)) {
-        throw new ConfigError(
-          `thresholds.margin must be in [0, 1]; got ${t.margin}.`,
-          { code: "invalid_thresholds" },
-        );
+        throw new ConfigError(`thresholds.margin must be in [0, 1]; got ${t.margin}.`, {
+          code: "invalid_thresholds",
+        });
       }
     }
   }
@@ -105,10 +102,9 @@ export function validateThresholds<S extends ReadonlyArray<string>>(
 
 function inRange01(name: string, value: number): void {
   if (Number.isNaN(value) || value < 0 || value > 1) {
-    throw new ConfigError(
-      `thresholds.${name} must be in [0, 1] inclusive; got ${value}.`,
-      { code: "invalid_thresholds" },
-    );
+    throw new ConfigError(`thresholds.${name} must be in [0, 1] inclusive; got ${value}.`, {
+      code: "invalid_thresholds",
+    });
   }
 }
 
@@ -157,8 +153,7 @@ export function validateProviderChain(
 
   if (spaceLength > min.cap) {
     throw new ConfigError(
-      `Decision space size (${spaceLength}) exceeds provider ${min.id}'s top-K cap (${min.cap}). ` +
-        `Reduce space size or replace the provider.`,
+      `Decision space size (${spaceLength}) exceeds provider ${min.id}'s top-K cap (${min.cap}). Reduce space size or replace the provider.`,
       { code: "decision_space_too_large" },
     );
   }
@@ -175,14 +170,10 @@ export function validateCalibratorCompatibility(
   providers: ReadonlyArray<{ readonly id: string; readonly capabilities: ProviderCapabilities }>,
 ): void {
   if (calibratorIsIdentity) return;
-  const multiSample = providers.find(
-    (p) => p.capabilities.distributionSource === "multi_sample",
-  );
+  const multiSample = providers.find((p) => p.capabilities.distributionSource === "multi_sample");
   if (multiSample) {
     throw new ConfigError(
-      `Provider ${multiSample.id} uses distributionSource: "multi_sample"; ` +
-        `non-identity calibrators are not supported on multi-sample providers in v0. ` +
-        `Use 'identity' calibrator or remove the multi-sample provider from the chain.`,
+      `Provider ${multiSample.id} uses distributionSource: "multi_sample"; non-identity calibrators are not supported on multi-sample providers in v0. Use 'identity' calibrator or remove the multi-sample provider from the chain.`,
       { code: "incompatible_calibrator" },
     );
   }
@@ -207,10 +198,9 @@ export function validateDistribution<T extends string>(
   space: ReadonlyArray<T>,
 ): void {
   if (Number.isNaN(d.coverage) || d.coverage < 0 || d.coverage > 1) {
-    throw new ProviderError(
-      `Invalid Distribution.coverage: ${d.coverage} (must be in [0, 1]).`,
-      { code: "invalid_distribution" },
-    );
+    throw new ProviderError(`Invalid Distribution.coverage: ${d.coverage} (must be in [0, 1]).`, {
+      code: "invalid_distribution",
+    });
   }
 
   // Per-prob range check (allow 0; engine fills missing keys)

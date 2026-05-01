@@ -5,7 +5,7 @@
  * Userspace can compose richer combinators (tap, getOrElse, etc.) in 1–3 lines.
  */
 
-import type { Classified, Filterable, Uncertain, Unknown, Verdict } from "./types.ts";
+import type { Classified, Filterable, Uncertain, Unknown, Verdict } from "./types.js";
 
 // ─── Type guards ────────────────────────────────────────────────────
 
@@ -83,6 +83,7 @@ export function filter<T extends string>(pred: (v: Filterable<T>) => boolean) {
   };
 }
 
-// ─── Namespace export so callers can write `Verdict.filter(...)` ────
-
-export const Verdict = { filter } as const;
+// Note: `Verdict` is a type (the union from types.ts), not a value namespace.
+// Users access `filter` and other combinators via named imports from "domovoi".
+// We deliberately do NOT export `const Verdict = { filter }` to avoid
+// shadowing the exported `Verdict<T>` type in the public surface.

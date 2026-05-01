@@ -23,12 +23,7 @@
       "import": "./dist/testing/index.js"
     }
   },
-  "files": [
-    "dist",
-    "LICENSE",
-    "NOTICE",
-    "README.md"
-  ],
+  "files": ["dist", "LICENSE", "NOTICE", "README.md"],
   "scripts": {
     "build": "tsup",
     "check": "biome check .",

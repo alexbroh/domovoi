@@ -198,11 +198,7 @@ export type PromptTemplate = {
    * user-given order. Single newline between question and input;
    * question undefined → just input (no leading newline).
    */
-  readonly userTemplate: (
-    input: string,
-    space: ReadonlyArray<string>,
-    question?: string,
-  ) => string;
+  readonly userTemplate: (input: string, space: ReadonlyArray<string>, question?: string) => string;
   /**
    * Stable hash for cache-key composition. Library default is
    * "domovoi/v0-default"; user overrides must supply their own.

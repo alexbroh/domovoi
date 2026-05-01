@@ -35,7 +35,7 @@ export type CacheKeyInputs = {
   /** Stable hash from PromptTemplate.templateHash (R14). */
   readonly templateHash: string;
   /** Decision space in USER-GIVEN order (K3). */
-  readonly decisionSpace: ReadonlyArray<string>;
+  readonly decisionSpace: readonly string[];
   /** Engine sends temperature: 0 in v0 (H2). */
   readonly temperature: number;
   /**

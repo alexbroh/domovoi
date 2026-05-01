@@ -9,7 +9,7 @@
 
 import { type Cache, memoryCache } from "../cache.js";
 import { type Calibrator, identity } from "../calibration/index.js";
-import { decide, validateClassifierConfig, withDefaults } from "../engine.js";
+import { decide, validateClassifierConfig, withDefaults } from "../engine/index.js";
 import { resolveDefaultProviders } from "../env.js";
 import { defaultTemplate } from "../prompt.js";
 import type { Provider } from "../providers/provider.js";
@@ -19,7 +19,7 @@ const ONE_SHOT_DEFAULT_THRESHOLDS = { high: 0.5, coverageMin: 0.3 } as const;
 
 export type ClassifyOptions<T extends string> = {
   readonly question?: string;
-  readonly providers?: ReadonlyArray<Provider>;
+  readonly providers?: readonly Provider[];
   readonly calibrator?: Calibrator;
   readonly cache?: Cache;
   readonly budget?: Budget;

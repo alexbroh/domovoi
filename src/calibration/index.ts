@@ -65,7 +65,7 @@ export function temperatureScaling(T: number): Calibrator {
       // p^(1/T) / Σ p_j^(1/T)
       const scaled: Record<string, number> = {};
       let sum = 0;
-      for (const [label, prob] of Object.entries(d.probs) as Array<[string, number]>) {
+      for (const [label, prob] of Object.entries(d.probs) as [string, number][]) {
         const v = prob === 0 ? 0 : prob ** inverseT;
         scaled[label] = v;
         sum += v;

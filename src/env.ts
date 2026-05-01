@@ -49,7 +49,7 @@ type ParsedEntry = {
  * Returns an empty array for empty/whitespace-only input (engine treats this
  * as unset → MissingProviderConfigError per M2).
  */
-export function parseProvidersEnv(raw: string | undefined): ReadonlyArray<ParsedEntry> {
+export function parseProvidersEnv(raw: string | undefined): readonly ParsedEntry[] {
   if (raw === undefined) return [];
   const trimmed = raw.trim();
   if (trimmed.length === 0) return [];
@@ -90,7 +90,7 @@ export function parseProvidersEnv(raw: string | undefined): ReadonlyArray<Parsed
  *   - Unknown factory ("unknown_provider_factory")
  *   - (Credential checks deferred to actual provider call; the SDK validates.)
  */
-export function resolveProvidersFromEnv(raw: string | undefined): ReadonlyArray<Provider> {
+export function resolveProvidersFromEnv(raw: string | undefined): readonly Provider[] {
   const entries = parseProvidersEnv(raw);
   if (entries.length === 0) {
     throw new ConfigError(
@@ -127,7 +127,7 @@ export function resolveProvidersFromEnv(raw: string | undefined): ReadonlyArray<
  * propagate. Tests should stub env before any domovoi call or use explicit
  * `{ providers }` per call.
  */
-export function resolveDefaultProviders(name?: string): ReadonlyArray<Provider> {
+export function resolveDefaultProviders(name?: string): readonly Provider[] {
   if (name !== undefined) {
     const namedKey = `DOMOVOI_PROVIDERS_${name.toUpperCase()}`;
     const namedRaw = process.env[namedKey];

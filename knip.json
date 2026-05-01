@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/index.ts",
+    "src/providers/index.ts",
+    "src/calibration/index.ts",
+    "src/testing/index.ts"
+  ],
+  "project": ["src/**/*.ts", "tests/**/*.ts"],
+  "ignore": ["dist/**", "examples/**"],
+  "ignoreDependencies": []
+}

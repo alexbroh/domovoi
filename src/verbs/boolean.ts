@@ -11,7 +11,7 @@
 
 import { type Cache, memoryCache } from "../cache.js";
 import { type Calibrator, identity } from "../calibration/index.js";
-import { decide, validateClassifierConfig, withDefaults } from "../engine.js";
+import { decide, validateClassifierConfig, withDefaults } from "../engine/index.js";
 import { resolveDefaultProviders } from "../env.js";
 import { defaultTemplate } from "../prompt.js";
 import type { Provider } from "../providers/provider.js";
@@ -24,7 +24,7 @@ const ONE_SHOT_BINARY_THRESHOLDS = { high: 0.7, low: 0.3, coverageMin: 0.3 } as 
 const YES_NO_SPACE = ["yes", "no"] as const satisfies readonly [YesNo, YesNo];
 
 export type BooleanOptions = {
-  readonly providers?: ReadonlyArray<Provider>;
+  readonly providers?: readonly Provider[];
   readonly calibrator?: Calibrator;
   readonly cache?: Cache;
   readonly budget?: Budget;

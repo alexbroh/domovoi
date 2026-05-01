@@ -14,7 +14,7 @@
 
 import { type Cache, memoryCache } from "../cache.js";
 import { type Calibrator, identity } from "../calibration/index.js";
-import { decide, validateClassifierConfig, withDefaults } from "../engine.js";
+import { decide, validateClassifierConfig, withDefaults } from "../engine/index.js";
 import { resolveDefaultProviders } from "../env.js";
 import { defaultTemplate } from "../prompt.js";
 import type { Provider } from "../providers/provider.js";
@@ -35,7 +35,7 @@ export type ClassifierConfig<T extends string, I> = {
   readonly question?: string;
   readonly format?: (x: I) => string;
   readonly thresholds: Thresholds<readonly [T, ...T[]]>;
-  readonly providers?: ReadonlyArray<Provider>;
+  readonly providers?: readonly Provider[];
   readonly calibrator?: Calibrator;
   readonly cache?: Cache;
   readonly budget?: Budget;
@@ -64,7 +64,7 @@ export interface Classifier<T extends string, I> {
   (input: I, opts?: { signal?: AbortSignal }): Promise<Verdict<T>>;
   classify(input: I, opts?: { signal?: AbortSignal }): Promise<Verdict<T>>;
   batch(
-    items: ReadonlyArray<I>,
+    items: readonly I[],
     opts?: { concurrency?: number; signal?: AbortSignal },
   ): Promise<Verdict<T>[]>;
 }
@@ -124,7 +124,7 @@ export function classifier<T extends string, I = string>(
 
   // Batch callable.
   const batch = async (
-    items: ReadonlyArray<I>,
+    items: readonly I[],
     opts?: { concurrency?: number; signal?: AbortSignal },
   ): Promise<Verdict<T>[]> => {
     const concurrency = opts?.concurrency ?? DEFAULT_BATCH_CONCURRENCY;

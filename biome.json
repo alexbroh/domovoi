@@ -20,16 +20,61 @@
     "enabled": true,
     "rules": {
       "recommended": true,
-      "suspicious": {
-        "noExplicitAny": "warn"
-      },
-      "style": {
-        "useImportType": "error",
-        "useExportType": "error"
+      "complexity": {
+        "noUselessTypeConstraint": "error",
+        "useArrowFunction": "error",
+        "noBannedTypes": "warn"
       },
       "correctness": {
         "noUnusedImports": "error",
-        "noUnusedVariables": "warn"
+        "noUnusedVariables": "error",
+        "noUnusedFunctionParameters": "warn",
+        "noUnusedPrivateClassMembers": "error"
+      },
+      "style": {
+        "useImportType": "error",
+        "useExportType": "error",
+        "useNamingConvention": {
+          "level": "error",
+          "options": {
+            "strictCase": false,
+            "requireAscii": true,
+            "conventions": [
+              {
+                "selector": { "kind": "typeLike" },
+                "formats": ["PascalCase"]
+              },
+              {
+                "selector": { "kind": "enumMember" },
+                "formats": ["camelCase", "CONSTANT_CASE"]
+              },
+              {
+                "selector": { "kind": "objectLiteralProperty" },
+                "formats": ["camelCase", "snake_case", "PascalCase", "CONSTANT_CASE"]
+              },
+              {
+                "selector": { "kind": "objectLiteralMethod" },
+                "formats": ["camelCase", "snake_case"]
+              }
+            ]
+          }
+        },
+        "useConsistentArrayType": {
+          "level": "error",
+          "options": { "syntax": "shorthand" }
+        },
+        "noNonNullAssertion": "warn",
+        "useTemplate": "error",
+        "noNamespace": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noConsoleLog": "warn",
+        "noEmptyInterface": "error",
+        "useAwait": "off"
+      },
+      "performance": {
+        "noAccumulatingSpread": "warn"
       }
     }
   },

@@ -55,7 +55,7 @@ export type VerdictMeta = {
   /** "openai/gpt-4o-mini" — same format as DOMOVOI_PROVIDERS env entries. */
   readonly providerUsed: string;
   /** Every provider attempted, in chain order. */
-  readonly providersAttempted: ReadonlyArray<string>;
+  readonly providersAttempted: readonly string[];
   /** Errors swallowed during fallback. Empty if no errors. */
   readonly providerErrors: ReadonlyArray<{
     readonly providerId: string;
@@ -91,7 +91,7 @@ export type UnknownReason<T extends string> =
     }
   | {
       readonly type: "provider_failure";
-      readonly errors: ReadonlyArray<SerializableError>;
+      readonly errors: readonly SerializableError[];
     }
   | {
       readonly type: "budget_exhausted";
@@ -165,7 +165,7 @@ export type Filterable<T extends string> = Classified<T> | Uncertain<T>;
  *   - Binary: `high > low` strict.
  *   - `margin >= 0`.
  */
-export type Thresholds<Space extends ReadonlyArray<string>> = Space["length"] extends 2
+export type Thresholds<Space extends readonly string[]> = Space["length"] extends 2
   ? {
       readonly high: number;
       readonly low: number;
@@ -198,7 +198,7 @@ export type PromptTemplate = {
    * user-given order. Single newline between question and input;
    * question undefined → just input (no leading newline).
    */
-  readonly userTemplate: (input: string, space: ReadonlyArray<string>, question?: string) => string;
+  readonly userTemplate: (input: string, space: readonly string[], question?: string) => string;
   /**
    * Stable hash for cache-key composition. Library default is
    * "domovoi/v0-default"; user overrides must supply their own.

@@ -37,6 +37,36 @@ jobs:
       - name: Build
         run: npm run build
 
+  validate-pack:
+    name: Validate package + types for publish
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: publint (package.json correctness)
+        run: npm run publint
+      - name: attw (Are The Types Wrong)
+        run: npm run attw
+
+  knip:
+    name: Detect unused code (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm ci
+      - run: npm run knip -- --reporter compact
+
   dco:
     name: DCO sign-off check
     runs-on: ubuntu-latest

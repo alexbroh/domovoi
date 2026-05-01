@@ -22,7 +22,7 @@ const DEFAULT_TEMPLATE_HASH = "domovoi/v0-default";
  */
 export const defaultTemplate: PromptTemplate = {
   systemPrompt: "You are a careful classifier. Output exactly one of: {labels_csv}. No other text.",
-  userTemplate: (input: string, _space: ReadonlyArray<string>, question?: string): string => {
+  userTemplate: (input: string, _space: readonly string[], question?: string): string => {
     if (question === undefined) return input;
     return `${question}\n${input}`;
   },
@@ -35,7 +35,7 @@ export const defaultTemplate: PromptTemplate = {
  */
 export function renderSystemPrompt(
   template: PromptTemplate,
-  space: ReadonlyArray<string>,
+  space: readonly string[],
 ): string | undefined {
   if (template.systemPrompt === undefined) return undefined;
   return template.systemPrompt.replace("{labels_csv}", space.join(", "));
@@ -49,7 +49,7 @@ export function renderSystemPrompt(
 export function renderUserPrompt(
   template: PromptTemplate,
   input: string,
-  space: ReadonlyArray<string>,
+  space: readonly string[],
   question?: string,
 ): string {
   return template.userTemplate(input, space, question);

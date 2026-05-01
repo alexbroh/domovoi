@@ -46,7 +46,7 @@ export interface Provider {
 
   sample<T extends string>(
     input: string,
-    space: ReadonlyArray<T>,
+    space: readonly T[],
     opts: SampleOptions,
   ): Promise<Distribution<T>>;
 }

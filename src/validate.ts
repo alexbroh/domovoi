@@ -26,7 +26,7 @@ import type { Distribution, ProviderCapabilities, Thresholds } from "./types.js"
  *
  * Note: T1 (`readonly [T, ...T[]]`) handles the empty-array case at the type level.
  */
-export function validateSpace(space: ReadonlyArray<string>): void {
+export function validateSpace(space: readonly string[]): void {
   if (space.length < 2) {
     throw new ConfigError(`Decision space must have at least 2 labels; got ${space.length}.`, {
       code: "invalid_space",
@@ -62,7 +62,7 @@ export function validateSpace(space: ReadonlyArray<string>): void {
  * Validate threshold values at construction. Inclusive [0, 1] range; binary
  * requires `high > low` strict; `margin >= 0` if present.
  */
-export function validateThresholds<S extends ReadonlyArray<string>>(
+export function validateThresholds<S extends readonly string[]>(
   thresholds: Thresholds<S>,
   spaceLength: number,
 ): void {
@@ -195,7 +195,7 @@ const SUM_TOLERANCE = 0.001;
  */
 export function validateDistribution<T extends string>(
   d: Distribution<T>,
-  space: ReadonlyArray<T>,
+  space: readonly T[],
 ): void {
   if (Number.isNaN(d.coverage) || d.coverage < 0 || d.coverage > 1) {
     throw new ProviderError(`Invalid Distribution.coverage: ${d.coverage} (must be in [0, 1]).`, {

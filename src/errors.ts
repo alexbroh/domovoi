@@ -78,7 +78,7 @@ export class ConfigError extends DomovoiError {
 // ─── Budget errors (runtime, user-imposed limits hit) ───────────────
 
 export class BudgetExhaustedError extends DomovoiError {
-  readonly attemptedProviders: ReadonlyArray<string>;
+  readonly attemptedProviders: readonly string[];
   readonly elapsedMs: number;
   readonly scope: "per_call_timeout" | "chain_timeout" | "max_calls";
 
@@ -86,7 +86,7 @@ export class BudgetExhaustedError extends DomovoiError {
     message: string,
     options: {
       scope: "per_call_timeout" | "chain_timeout" | "max_calls";
-      attemptedProviders: ReadonlyArray<string>;
+      attemptedProviders: readonly string[];
       elapsedMs: number;
       cause?: unknown;
     },

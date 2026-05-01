@@ -24,7 +24,7 @@ export type MockProviderOptions<T extends string = string> = {
    */
   readonly behavior: (
     input: string,
-    space: ReadonlyArray<T>,
+    space: readonly T[],
     opts: SampleOptions,
   ) => Distribution<T> | Promise<Distribution<T>>;
   /** Override default capabilities (for testing capability-mismatch logic). */
@@ -62,7 +62,7 @@ export function mockProvider<T extends string = string>(options: MockProviderOpt
   // is safe in practice.
   type AnyBehavior = (
     i: string,
-    s: ReadonlyArray<string>,
+    s: readonly string[],
     o: SampleOptions,
   ) => Distribution<string> | Promise<Distribution<string>>;
   const erased = options.behavior as unknown as AnyBehavior;
@@ -74,7 +74,7 @@ export function mockProvider<T extends string = string>(options: MockProviderOpt
     capabilities,
     async sample<U extends string>(
       input: string,
-      space: ReadonlyArray<U>,
+      space: readonly U[],
       opts: SampleOptions,
     ): Promise<Distribution<U>> {
       // Pre-aborted check: producers should respect cancellation.
@@ -83,7 +83,7 @@ export function mockProvider<T extends string = string>(options: MockProviderOpt
         if (reason instanceof Error) throw reason;
         throw new Error(typeof reason === "string" ? reason : "aborted");
       }
-      const result = await erased(input, space as ReadonlyArray<string>, opts);
+      const result = await erased(input, space as readonly string[], opts);
       return result as Distribution<U>;
     },
   };

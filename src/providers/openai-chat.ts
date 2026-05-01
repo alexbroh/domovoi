@@ -98,7 +98,7 @@ function buildAdapter(args: AdapterArgs): Provider {
 
     async sample<T extends string>(
       input: string,
-      space: ReadonlyArray<T>,
+      space: readonly T[],
       opts: SampleOptions,
     ): Promise<Distribution<T>> {
       const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];

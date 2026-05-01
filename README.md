@@ -1,8 +1,16 @@
 # domovoi
 
-AI dispatch you sprinkle through ordinary code. Typed Verdicts at every fork. Bind a domovoi to your codebase — a household spirit that lives in your runtime, judging cases as they arrive. The same primitive scales from a one-line classifier to a budgeted, observable, replayable production flow.
+Software has been deterministic by convention — every fork in the code is a hand-coded predicate, every route a rule someone wrote down. The interesting decisions often resist enumeration: *is this email a complaint?* *is this PR safe to auto-merge?* *is this user's intent to reorder or cancel?* domovoi treats AI as an **embedded worker** for exactly that class of fork — a primitive you sprinkle through ordinary code at the points where rules don't fit. Each module stays deterministic; the glue between them becomes runtime-decided, typed, and budgeted. *Living software*, in the precise sense — bounded structural non-determinism, not unbounded autonomy.
 
-> **What ships today (v0.1):** the Verdict primitive — typed-uncertainty classification with calibrated probability and structured failure modes. **v0.2** adds ambient context propagation (`domovoi.scope` for budget / trace / cancellation across embedded calls). **v1** is production-ready. See the [Roadmap](#roadmap) below.
+## Why "domovoi"
+
+In Slavic folklore, a *domovoi* (домово́й — "of the house") is a household guardian spirit. Bound to the dwelling. Inherited with the property. Performing ongoing protective service for whoever lives there next. Not a tool you summon from outside. Not an autonomous agent with its own agenda. A spirit that *lives inside* the home, watches over the cases the household brings it, and renders verdicts.
+
+The metaphor maps cleanly to the technical scope. domovoi is **bound** to your runtime — it's not a remote service, it's a library that lives inside your process. **Embedded** across module boundaries — every module can reach for the same domovoi at any decision point, without ceremony. **Judging with calibrated probability and structured uncertainty** — when the answer is clear, you get a typed `Classified<T>`; when it's not, you get an `Uncertain` or `Unknown` with the reason discriminated, never a thrown exception or a silent miscall.
+
+Other names for this thing were considered and discarded. *Familiar* and *augur* carry biblical condemnation (Lev 19:31, Deut 18:10–11) — wrong values for a tool meant to be trustworthy. *Djinn* and *genie* connote trickster behavior — wrong reliability framing. *Agent* and *worker* are taken by adjacent paradigms (autonomous agents, queue workers) that domovoi explicitly is not. *Domovoi* is pre-Christian Slavic folkloric, accessible in pronunciation ("doh-mo-VOY"), and carries the exact connotation we need: a benign, embedded, judgment-rendering presence that's part of the dwelling itself.
+
+Bind a domovoi to your codebase. Receive Verdicts. Ship.
 
 ```ts
 import { domovoi, isClassified } from "domovoi";
@@ -16,9 +24,11 @@ if (isClassified(v)) {
 
 The decision space narrows the output type. No user-written generics. No `import * as`. One line.
 
+> **What ships today (v0.1):** the Verdict primitive — typed-uncertainty classification with calibrated probability and structured failure modes. **v0.2** adds ambient context propagation (`domovoi.scope` for budget / trace / cancellation across embedded calls — the embedded-worker concept fully realized). **v1** is production-ready. See the [Roadmap](#roadmap) below.
+
 ---
 
-## Why domovoi
+## Why typed Verdicts
 
 Most LLM-classification approaches force you to choose between:
 - **Free-form generation** — flexible but unstructured; you parse and pray.

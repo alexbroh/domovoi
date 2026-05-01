@@ -1,15 +1,11 @@
 /**
- * Public Provider interface for domovoi.
+ * Public Provider extension point. The built-in factories (`openai`,
+ * `ollama`, `openaiCompat`) are the ergonomic path; implement this interface
+ * directly to back domovoi with a custom LLM gateway or internal adapter.
  *
- * Per C6, this interface is exported as type-only — users implement it for
- * custom backends (third-party LLM gateways, internal-org adapters, niche
- * providers). Built-in factories (`openai`, `ollama`, `openaiCompat`) are the
- * ergonomic primary path; this interface is the extension point.
- *
- * ProviderOptions is open: adapters can define provider-specific opts
- * (multiSampleN, custom timeouts, etc.) and document them. Engine plumbs
- * `signal` and `timeoutMs` (already merged via AbortSignal.any per K2) — adapters
- * forward `signal` to their HTTP client.
+ * The engine merges the user signal with a per-call timeout into a single
+ * `signal` and passes it to `sample()`; adapters must forward it to their
+ * HTTP client.
  */
 
 import type { Distribution, PromptTemplate, ProviderCapabilities } from "../types.js";
@@ -18,25 +14,27 @@ export type SampleOptions = {
   readonly template: PromptTemplate;
   readonly temperature: number;
   readonly seed?: number;
-  /** Hint timeout; engine has already merged this into `signal` via AbortSignal.any. */
+  /**
+   * Advisory timeout; the engine has already enforced it via the merged
+   * `signal`. Adapters may pass this to their HTTP client as belt-and-suspenders.
+   */
   readonly timeoutMs: number;
-  /** Merged signal (user signal + AbortSignal.timeout). Provider should forward this to its HTTP client. */
+  /**
+   * Merged user signal + per-call timeout. Adapters must forward this to
+   * their HTTP client so cancellation aborts in-flight requests.
+   */
   readonly signal?: AbortSignal;
 };
 
 /**
- * Public Provider interface. Implementations contract:
- *   - `id`: unique identifier; "factory/model" format conventional (e.g., "openai/gpt-4o-mini").
- *   - `modelId`: model identifier within the factory (e.g., "gpt-4o-mini").
- *   - `tokenizerId`: identifier used for cache keying and collision detection.
- *   - `capabilities`: discloses distributionSource + coverageMeasurement +
- *     maxTopLogprobs to the engine for routing/validation.
- *   - `sample(input, space, opts)`: takes a prompt input string + the decision
- *     space (in user-given order) + opts; returns Distribution<T>.
+ * Implementations must honor `opts.temperature`, must forward `opts.signal`
+ * to their HTTP client, and may use `opts.seed` when the backend supports it.
  *
- * Provider implementations MUST honor `temperature` (engine sends 0 in v0 for
- * determinism); MUST plumb `signal` to their HTTP client (cancellation is a
- * first-class contract); MAY use `seed` if supported.
+ *   - `id` — unique identifier; conventionally `"factory/model"` (e.g.
+ *     `"openai/gpt-4o-mini"`).
+ *   - `modelId` — model identifier within the factory.
+ *   - `tokenizerId` — identifier used for cache keying.
+ *   - `capabilities` — discloses how the engine should route and validate.
  */
 export interface Provider {
   readonly id: string;
@@ -45,14 +43,10 @@ export interface Provider {
   readonly capabilities: ProviderCapabilities;
 
   /**
-   * Optional construction-time validation hook. When implemented, the engine
-   * invokes this from `validateClassifierConfig` for every provider in the
-   * chain. Implementations should throw `ConfigError` on validation failure
-   * (e.g., a tokenizer-aware adapter detecting a decision-space first-token
-   * collision before any network I/O).
-   *
-   * Engine guarantees this fires *before* any `sample()` call. Adapters that
-   * don't need eager validation can leave it undefined.
+   * Optional eager check fired once per provider during
+   * `validateClassifierConfig`, before any `sample()` call. Throw
+   * `ConfigError` to surface decision-space problems (e.g. first-token
+   * collisions) at construction rather than on first sample.
    */
   validate?(space: readonly string[]): void;
 

@@ -18,8 +18,6 @@ import type { SerializableError, Unknown } from "../types.js";
 import type { MetaBuilder } from "./meta.js";
 import { buildMetaForFailure } from "./meta.js";
 
-// ─── Signal inspection ──────────────────────────────────────────────
-
 /**
  * Returns a human-readable string describing why a signal aborted, or
  * `undefined` if the signal isn't aborted (or wasn't supplied).
@@ -41,8 +39,6 @@ export function isTimeoutAbort(signal: AbortSignal): boolean {
   const reason = signal.reason;
   return reason instanceof Error && reason.name === "TimeoutError";
 }
-
-// ─── Failure-mode Verdict construction ──────────────────────────────
 
 export function buildCancelledVerdict<T extends string>(
   meta: MetaBuilder,
@@ -76,8 +72,6 @@ export function buildBudgetExhaustedVerdict<T extends string>(
     meta: buildMetaForFailure(meta, provider),
   };
 }
-
-// ─── AggregateError helper ──────────────────────────────────────────
 
 /**
  * Rehydrate a `SerializableError` (the JSON-safe shape stored in

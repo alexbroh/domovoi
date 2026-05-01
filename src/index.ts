@@ -12,8 +12,6 @@ import { boolean as booleanVerb } from "./verbs/boolean.js";
 import { classifier as classifierFactory } from "./verbs/classifier.js";
 import { classify as classifyVerb } from "./verbs/classify.js";
 
-// ─── Type re-exports ────────────────────────────────────────────────
-
 export type {
   Verdict,
   Classified,
@@ -35,11 +33,7 @@ export type { ClassifyOptions } from "./verbs/classify.js";
 export type { BooleanOptions } from "./verbs/boolean.js";
 export type { Cache, CacheStats, CacheWithStats } from "./cache.js";
 
-// ─── Verdict combinators ────────────────────────────────────────────
-
 export { match, isClassified, isUncertain, isUnknown, filter } from "./verdict.js";
-
-// ─── Errors ─────────────────────────────────────────────────────────
 
 export {
   DomovoiError,
@@ -48,8 +42,6 @@ export {
   BudgetExhaustedError,
   type ErrorCode,
 } from "./errors.js";
-
-// ─── Public namespace `domovoi.*` ───────────────────────────────────
 
 /**
  * Top-level API surface — what users primarily import.

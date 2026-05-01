@@ -7,16 +7,12 @@
  *   - Unknown<T>:  no result; reason discriminates the failure mode.
  */
 
-// ─── Provider capability tiers ──────────────────────────────────────
-
 export type ProviderCapabilities = {
   readonly distributionSource: "logprobs" | "multi_sample";
   readonly coverageMeasurement: "exact" | "approximate" | "none";
   /** Max top-K logprobs returned by provider; 0 for multi_sample. */
   readonly maxTopLogprobs: number;
 };
-
-// ─── Distribution ───────────────────────────────────────────────────
 
 export type Distribution<T extends string> = {
   /**
@@ -30,8 +26,6 @@ export type Distribution<T extends string> = {
    */
   readonly coverage: number;
 };
-
-// ─── SerializableError (for meta.providerErrors) ────────────────────
 
 /**
  * Plain-object error shape; JSON-safe. Engine converts thrown Error instances
@@ -48,8 +42,6 @@ export type SerializableError = {
   readonly cause?: SerializableError;
   readonly stack?: string;
 };
-
-// ─── VerdictMeta (on every variant) ─────────────────────────────────
 
 export type VerdictMeta = {
   /** "openai/gpt-4o-mini" — same format as DOMOVOI_PROVIDERS env entries. */
@@ -70,8 +62,6 @@ export type VerdictMeta = {
   /** How the Distribution was constructed by the answering provider. */
   readonly distributionSource: "logprobs" | "multi_sample";
 };
-
-// ─── UnknownReason ──────────────────────────────────────────────────
 
 export type UnknownReason<T extends string> =
   | {
@@ -101,8 +91,6 @@ export type UnknownReason<T extends string> =
       readonly type: "cancelled";
       readonly reason?: string;
     };
-
-// ─── Verdict variants ───────────────────────────────────────────────
 
 /**
  * The classifier produced a confident result: `value` is one of the labels
@@ -148,12 +136,8 @@ export type Unknown<T extends string> = {
  */
 export type Verdict<T extends string> = Classified<T> | Uncertain<T> | Unknown<T>;
 
-// ─── Filterable subset (used by Verdict.filter) ─────────────────────
-
 /** Verdict variants that carry a top-class candidate (Classified or Uncertain). */
 export type Filterable<T extends string> = Classified<T> | Uncertain<T>;
-
-// ─── Thresholds (discriminated by space size) ───────────────────────
 
 /**
  * Thresholds discriminated by space length:
@@ -177,8 +161,6 @@ export type Thresholds<Space extends readonly string[]> = Space["length"] extend
       readonly coverageMin?: number;
     };
 
-// ─── Budget ─────────────────────────────────────────────────────────
-
 export type Budget = {
   /** Wall-clock per-provider-call timeout. Default 10_000ms. */
   readonly perCallTimeoutMs?: number;
@@ -187,8 +169,6 @@ export type Budget = {
   /** Hard cap on number of provider calls per classification. Default = chain length. */
   readonly maxCalls?: number;
 };
-
-// ─── PromptTemplate ─────────────────────────────────────────────────
 
 export type PromptTemplate = {
   /** Optional system prompt; undefined skips the system message. */

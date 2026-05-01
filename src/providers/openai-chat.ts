@@ -1,25 +1,16 @@
 /**
  * OpenAI Chat Completions adapter — and OpenAI-compat factories for local
- * runtimes (Ollama, vLLM, LM Studio, Together, Fireworks, OpenRouter, etc.).
+ * runtimes (Ollama, vLLM, LM Studio, Together, Fireworks, OpenRouter, …).
  *
- * Three factories:
- *   - `openai(model, opts?)`: hosted OpenAI; typed model union with escape hatch.
- *   - `ollama(model, opts?)`: local Ollama convenience; defaults to localhost:11434.
- *   - `openaiCompat(model, opts)`: generic OpenAI-compatible; explicit baseURL required.
+ * Three factories — all backed by the same internal adapter, differing in
+ * default base URL, default `apiKey`, and whether a tokenizer is wired up
+ * for first-token collision detection and logit_bias construction:
  *
- * All three return `Provider` instances backed by the same Chat Completions
- * adapter. Distinction is in:
- *   - `id` (semantically honest about what backend this targets)
- *   - default baseURL / apiKey
- *   - default capabilities (especially maxTopLogprobs)
- *   - whether tokenizer-aware logit_bias / collision detection is enabled
+ *   - `openai(model, opts?)` — hosted OpenAI; uses `cl100k_base`.
+ *   - `ollama(model, opts?)` — local Ollama; defaults to `localhost:11434`.
+ *   - `openaiCompat(model, opts)` — generic; requires explicit `baseURL`.
  *
- * Tokenizer integration: the OpenAI hosted factory uses `cl100k_base` for
- * exact first-token-id resolution + logit_bias construction. Custom backends
- * (Ollama, openaiCompat) may run any tokenizer; they fall back to string-based
- * logprob matching unless the user supplies a tokenizer override.
- *
- * Cancellation: opts.signal forwarded to the OpenAI SDK call.
+ * Without a tokenizer the adapter falls back to string-based logprob matching.
  */
 
 import OpenAI from "openai";
@@ -34,13 +25,9 @@ import {
 import type { Distribution, ProviderCapabilities } from "../types.js";
 import type { Provider, SampleOptions } from "./provider.js";
 
-// ─── OpenAI hosted: typed model union with escape hatch ─────────────
-
 /**
- * Known OpenAI hosted model identifiers as of April 2026, plus an escape
- * hatch (`(string & {})`) so new models work without a library release.
- *
- * Autocomplete shows the known models; arbitrary strings are still accepted.
+ * The known-models list provides autocomplete; the `(string & {})` member is
+ * an escape hatch so new models work without a library release.
  */
 export type OpenAIModel =
   | "gpt-4o"
@@ -53,34 +40,28 @@ export type OpenAIModel =
   // biome-ignore lint/complexity/noBannedTypes: escape hatch idiom for autocomplete + free-form
   | (string & {});
 
-// ─── Common provider options ────────────────────────────────────────
-
 export type OpenAIProviderOptions = {
-  /** Override the OpenAI base URL. Default: "https://api.openai.com/v1". */
+  /** Default: `"https://api.openai.com/v1"`. */
   readonly baseURL?: string;
   /**
-   * API key for this provider. Default: `process.env.OPENAI_API_KEY`.
-   * For Ollama / LM Studio / etc., pass any non-empty string the SDK accepts.
+   * Default: `process.env.OPENAI_API_KEY`. For Ollama / LM Studio /
+   * compat backends, pass any non-empty string the SDK will accept.
    */
   readonly apiKey?: string;
-  /** Optional request timeout (ms) at the SDK level. Engine also enforces budget separately. */
+  /** SDK-level request timeout. Independent of the engine's own budget. */
   readonly timeout?: number;
 };
-
-// ─── Adapter capabilities ───────────────────────────────────────────
 
 const LOGPROBS_CAPABILITIES: ProviderCapabilities = {
   distributionSource: "logprobs",
   coverageMeasurement: "exact",
-  // OpenAI hosted hard cap is 20; OpenAI-compat backends vary but most match.
-  // Custom adapters can override via opts if their backend supports more.
+  // OpenAI hosted caps top_logprobs at 20; most OpenAI-compat backends match.
   maxTopLogprobs: 20,
 };
 
-// S8 lock: positive bias only on in-space first-tokens; no negative biases.
+// Positive bias on in-space first-tokens only. Nudges the model toward
+// in-space output without forcing — keeps the coverage signal honest.
 const LOGIT_BIAS_VALUE = 100;
-
-// ─── Internal: build a Provider backed by OpenAI Chat Completions ───
 
 type AdapterArgs = {
   readonly id: string;
@@ -89,31 +70,20 @@ type AdapterArgs = {
   readonly capabilities: ProviderCapabilities;
   readonly client: OpenAI;
   /**
-   * Optional tokenizer for first-token-id resolution + logit_bias.
-   * When provided, the adapter:
-   *   - Detects first-token collisions on first sample call (lazy, since
-   *     the space is per-call, not per-factory).
-   *   - Builds a per-call logit_bias map from the in-space first-token ids.
-   *   - Falls back to string-based logprob matching only when an in-space
-   *     label's first-token id isn't in the returned top-K.
-   * Without it: pure string-based logprob matching (the bootstrap form).
+   * Tokenizer for first-token-id resolution and logit_bias construction.
+   * When omitted, the adapter falls back to string-based logprob matching.
    */
   readonly tokenizer?: Tokenizer;
 };
 
 function buildAdapter(args: AdapterArgs): Provider {
-  // Memo for first-token collision results, keyed by canonical-JSON of the
-  // space. Both the eager `validate(space)` hook (called at classifier
-  // construction by the engine) and the defense-in-depth `sample()` check
-  // share this memo so repeat passes are zero-cost.
+  // Memo of spaces already checked, shared by the eager validate hook and
+  // the per-call defense-in-depth check, so repeat passes are zero-cost.
   const collisionMemo = new Set<string>();
   const tokenizer = args.tokenizer;
 
-  // Eager construction-time validation: surfaces decision_space_collision
-  // at `domovoi.classifier({...})` time when this adapter is in the chain.
-  // Defined only when a tokenizer is available (cl100k for hosted OpenAI;
-  // explicit opt-in for openaiCompat). Backends without tokenizer info
-  // (Ollama default) omit this hook so the engine skips it.
+  // The eager `validate` hook is exposed only when a tokenizer is available;
+  // backends without tokenizer info (e.g. default Ollama) skip it.
   const eagerValidate =
     tokenizer === undefined
       ? {}
@@ -135,9 +105,7 @@ function buildAdapter(args: AdapterArgs): Provider {
       space: readonly T[],
       opts: SampleOptions,
     ): Promise<Distribution<T>> {
-      // Tokenizer-aware path: first-token collision (defense-in-depth — engine
-      // already calls validate() at construction; this catches any caller that
-      // bypassed validateClassifierConfig) + logit_bias + token-id matching.
+      // Defense-in-depth: catches callers that bypassed `validateClassifierConfig`.
       let logitBias: Record<string, number> | undefined;
       let inSpaceFirstTokenIds: Map<number, T> | undefined;
       if (tokenizer !== undefined) {
@@ -161,7 +129,7 @@ function buildAdapter(args: AdapterArgs): Provider {
           temperature: opts.temperature,
           logprobs: true,
           top_logprobs: Math.min(args.capabilities.maxTopLogprobs, Math.max(space.length * 2, 5)),
-          // Generate just enough tokens for a single label; cap at 16 to be safe.
+          // One label is one short word; 16 tokens is enough headroom.
           max_completion_tokens: 16,
         };
         if (opts.seed !== undefined) params.seed = opts.seed;
@@ -196,18 +164,14 @@ function buildAdapter(args: AdapterArgs): Provider {
   };
 }
 
-// ─── Distribution construction ──────────────────────────────────────
-
 type TopLogprobEntry = OpenAI.Chat.Completions.ChatCompletionTokenLogprob.TopLogprob;
 
 /**
- * Tokenizer-aware distribution construction (preferred when a tokenizer is
- * available). Each top-K entry's `bytes` array is hashed back to a token id
- * via the tokenizer, and matched against the in-space first-token id map.
- *
- * If the OpenAI SDK doesn't expose token bytes (older API versions), falls
- * back to encoding the entry's `token` string and comparing first-id —
- * this is exact when the model emitted the token at a generation boundary.
+ * Tokenizer-aware distribution construction. Re-encodes each top-K entry's
+ * surface-form string to get its first token id, then maps that to an
+ * in-space label. The encoding fallback (instead of reading the SDK's
+ * `bytes` array) is reliable across SDK versions and handles
+ * whitespace-padded variants.
  */
 function buildDistributionByTokenId<T extends string>(
   space: readonly T[],
@@ -219,10 +183,6 @@ function buildDistributionByTokenId<T extends string>(
   let inSpaceMass = 0;
 
   for (const entry of tokenLogprobs) {
-    // Re-tokenize the emitted string to get its first token id. The OpenAI
-    // SDK's `bytes` array would be more direct, but isn't always present
-    // across SDK versions; encoding the surface-form string is a reliable
-    // fallback that also handles whitespace-padded variants.
     const ids = tokenizer.encode(entry.token);
     const firstId = ids[0];
     if (firstId === undefined) continue;
@@ -240,8 +200,8 @@ function buildDistributionByTokenId<T extends string>(
 }
 
 /**
- * String-based fallback used when no tokenizer is available (Ollama, generic
- * openaiCompat). Matches by trimmed string equality or label-prefix.
+ * String-based fallback when no tokenizer is wired up. Matches by trimmed
+ * equality or label-prefix.
  */
 function buildDistributionByStringMatch<T extends string>(
   space: readonly T[],
@@ -255,7 +215,7 @@ function buildDistributionByStringMatch<T extends string>(
     let bestProb = 0;
     for (const entry of tokenLogprobs) {
       const tok = entry.token.trim();
-      // tok must be non-empty before .startsWith — every string starts with "".
+      // `startsWith("")` is trivially true; require a non-empty token first.
       if (tok === trimmed || (tok && trimmed.startsWith(tok))) {
         const prob = Math.exp(entry.logprob);
         if (prob > bestProb) bestProb = prob;
@@ -287,8 +247,6 @@ function renormalize<T extends string>(
   };
 }
 
-// ─── Tokenizer-aware helpers ────────────────────────────────────────
-
 function ensureNoCollisions<T extends string>(
   tokenizer: Tokenizer,
   space: readonly T[],
@@ -317,8 +275,6 @@ function mapFirstTokenIds<T extends string>(
   return map;
 }
 
-// ─── Factory: openai(model, opts?) ──────────────────────────────────
-
 /**
  * Hosted OpenAI provider. Defaults to `process.env.OPENAI_API_KEY` and
  * `https://api.openai.com/v1`. Uses the cl100k_base tokenizer for exact
@@ -342,8 +298,6 @@ export function openai(model: OpenAIModel, opts?: OpenAIProviderOptions): Provid
     tokenizer: cl100kTokenizer(),
   });
 }
-
-// ─── Factory: ollama(model, opts?) — local convenience ──────────────
 
 const OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434/v1";
 const OLLAMA_DEFAULT_API_KEY = "ollama";
@@ -376,8 +330,6 @@ export function ollama(model: string, opts?: OpenAIProviderOptions): Provider {
     // No tokenizer — string-based fallback matches Ollama's varied tokenizers.
   });
 }
-
-// ─── Factory: openaiCompat(model, opts) — generic ───────────────────
 
 export type OpenAICompatOptions = OpenAIProviderOptions & {
   /** Required for openaiCompat — caller must specify the endpoint. */

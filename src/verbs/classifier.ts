@@ -20,8 +20,6 @@ import { defaultTemplate } from "../prompt.js";
 import type { Provider } from "../providers/provider.js";
 import type { Budget, PromptTemplate, Thresholds, Verdict } from "../types.js";
 
-// ─── Public ClassifierConfig shape ──────────────────────────────────
-
 /**
  * Configuration accepted by `domovoi.classifier({...})`.
  *
@@ -51,8 +49,6 @@ export type ClassifierConfig<T extends string, I> = {
   readonly onErrorPolicy?: "fallback" | "throw";
 };
 
-// ─── Public Classifier callable shape ───────────────────────────────
-
 /**
  * The configured runtime instance. Callable with an input; returns
  * `Promise<Verdict<T>>`.
@@ -68,8 +64,6 @@ export interface Classifier<T extends string, I> {
     opts?: { concurrency?: number; signal?: AbortSignal },
   ): Promise<Verdict<T>[]>;
 }
-
-// ─── Build a Classifier from config ─────────────────────────────────
 
 const DEFAULT_BATCH_CONCURRENCY = 5;
 

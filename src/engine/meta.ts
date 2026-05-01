@@ -7,7 +7,7 @@
 import type { Provider } from "../providers/provider.js";
 import type { SerializableError, VerdictMeta } from "../types.js";
 
-export type ProviderErrorRecord = {
+type ProviderErrorRecord = {
   readonly providerId: string;
   readonly error: SerializableError;
 };

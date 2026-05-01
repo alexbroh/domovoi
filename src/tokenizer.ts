@@ -18,7 +18,7 @@
 
 import { get_encoding, type Tiktoken } from "tiktoken";
 
-export type TokenizerId = "openai/cl100k_base";
+type TokenizerId = "openai/cl100k_base";
 
 export interface Tokenizer {
   readonly id: TokenizerId;

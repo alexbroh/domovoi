@@ -13,7 +13,7 @@
 
 import type { Distribution, Thresholds } from "../types.js";
 
-export type ThresholdResult<T extends string> =
+type ThresholdResult<T extends string> =
   | { kind: "classified"; value: T; probability: number }
   | { kind: "uncertain"; top: T; probability: number; runnerUp: T }
   | {

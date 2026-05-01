@@ -52,7 +52,7 @@ export function buildCancelledVerdict<T extends string>(
   };
 }
 
-export type BudgetScope = "per_call_timeout" | "chain_timeout" | "max_calls";
+type BudgetScope = "per_call_timeout" | "chain_timeout" | "max_calls";
 
 /**
  * Build `Unknown { budget_exhausted, scope }` for `onErrorPolicy: "fallback"`.

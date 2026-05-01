@@ -7,6 +7,7 @@
 import { assertType, describe, expectTypeOf, test } from "vitest";
 import {
   type Classified,
+  domovoi,
   isClassified,
   isUncertain,
   isUnknown,
@@ -91,5 +92,28 @@ describe("T10 — literal narrowing one-liner (RESEARCH.md Pass 2 SOTA bar)", ()
       // The whole point: r.value must be the literal union, not bare string.
       assertType<"news" | "sports" | "music">(r.value);
     }
+  });
+
+  test("call-site infers literal union without `as const` (const type parameter)", () => {
+    const v = domovoi.classify("input", ["news", "sports", "music"]);
+    // The Promise resolves to Verdict<"news" | "sports" | "music">, NOT Verdict<string>.
+    expectTypeOf(v).resolves.toEqualTypeOf<Verdict<"news" | "sports" | "music">>();
+  });
+
+  test("call-site `as const` form still works (backwards compatible)", () => {
+    const v = domovoi.classify("input", ["news", "sports", "music"] as const);
+    expectTypeOf(v).resolves.toEqualTypeOf<Verdict<"news" | "sports" | "music">>();
+  });
+
+  test("classifier({ space }) narrows without `as const`", () => {
+    const c = domovoi.classifier({
+      space: ["yes", "no"],
+      thresholds: { high: 0.7, low: 0.3 },
+      providers: [],
+    });
+    expectTypeOf(c).parameter(0).toEqualTypeOf<string>();
+    // Classifier<T, I> narrows T from the inline space.
+    const v = c("input");
+    expectTypeOf(v).resolves.toEqualTypeOf<Verdict<"yes" | "no">>();
   });
 });

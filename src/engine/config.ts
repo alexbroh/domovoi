@@ -24,12 +24,12 @@ import {
 export const DEFAULT_PER_CALL_TIMEOUT_MS = 10_000;
 export const DEFAULT_CHAIN_TIMEOUT_MS = 30_000;
 
-export type OnProviderErrorHook = (
+type OnProviderErrorHook = (
   err: ProviderError,
   ctx: { providerId: string; attempt: number },
 ) => void | Promise<void>;
 
-export type EngineHooks = {
+type EngineHooks = {
   onCall?: (...args: unknown[]) => void | Promise<void>;
   onResult?: (...args: unknown[]) => void | Promise<void>;
 };
@@ -55,7 +55,7 @@ export type DecideConfig<T extends string> = {
   readonly temperature: number;
 };
 
-export type DecideConfigInput<T extends string> = {
+type DecideConfigInput<T extends string> = {
   readonly space: readonly T[];
   readonly thresholds: Thresholds<readonly T[]>;
   readonly providers: readonly Provider[];
@@ -92,7 +92,7 @@ export function withDefaults<T extends string>(input: DecideConfigInput<T>): Dec
   };
 }
 
-export type ValidateClassifierConfigInput<T extends string> = {
+type ValidateClassifierConfigInput<T extends string> = {
   readonly name?: string;
   readonly space: readonly T[];
   readonly thresholds: Thresholds<readonly T[]>;

@@ -27,7 +27,7 @@ export type ClassifyOptions<T extends string> = {
   readonly signal?: AbortSignal;
 };
 
-export async function classify<T extends string>(
+export async function classify<const T extends string>(
   input: string,
   space: readonly [T, ...T[]],
   opts?: ClassifyOptions<T>,

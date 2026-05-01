@@ -20,7 +20,7 @@ import type { Distribution } from "./types.js";
  */
 export const CACHE_SCHEMA_VERSION = 1;
 
-export type CacheKeyInputs = {
+type CacheKeyInputs = {
   readonly providerId: string;
   readonly modelId: string;
   readonly tokenizerId: string;

@@ -58,7 +58,6 @@ export type ClassifierConfig<T extends string, I> = {
  */
 export interface Classifier<T extends string, I> {
   (input: I, opts?: { signal?: AbortSignal }): Promise<Verdict<T>>;
-  classify(input: I, opts?: { signal?: AbortSignal }): Promise<Verdict<T>>;
   batch(
     items: readonly I[],
     opts?: { concurrency?: number; signal?: AbortSignal },
@@ -67,7 +66,7 @@ export interface Classifier<T extends string, I> {
 
 const DEFAULT_BATCH_CONCURRENCY = 5;
 
-export function classifier<T extends string, I = string>(
+export function classifier<const T extends string, I = string>(
   config: ClassifierConfig<T, I>,
 ): Classifier<T, I> {
   // Resolve providers: explicit overrides env.
@@ -144,10 +143,7 @@ export function classifier<T extends string, I = string>(
     return results;
   };
 
-  // Build the callable + method shape via Object.assign on the function.
+  // Callable function with a `.batch` method attached.
   const callable = single as Classifier<T, I>;
-  return Object.assign(callable, {
-    classify: single,
-    batch,
-  });
+  return Object.assign(callable, { batch });
 }

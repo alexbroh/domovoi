@@ -44,6 +44,9 @@ yarn.lock
 # Tooling
 .turbo/
 
+# Claude Code project-local config (skills, settings, agent state)
+.claude/
+
 # OS-specific
 .Trashes
 ehthumbs.db

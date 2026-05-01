@@ -20,7 +20,7 @@ vi.mock("openai", () => {
 
 import { ConfigError } from "../../src/errors.js";
 import { defaultTemplate } from "../../src/prompt.js";
-import { ollama, openai, openaiCompat } from "../../src/providers/openai-chat.js";
+import { ollama, openai, openaiCompat } from "../../src/providers/openai/index.js";
 
 const SAMPLE_OPTS = {
   template: defaultTemplate,

@@ -15,7 +15,7 @@
  */
 
 import { ConfigError } from "./errors.js";
-import { ollama, openai } from "./providers/openai-chat.js";
+import { ollama, openai } from "./providers/openai/index.js";
 import type { Provider } from "./providers/provider.js";
 
 type FactoryFn = (model: string) => Provider;

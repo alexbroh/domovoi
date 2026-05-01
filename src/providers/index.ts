@@ -9,5 +9,5 @@ export {
   ollama,
   openai,
   openaiCompat,
-} from "./openai-chat.js";
+} from "./openai/index.js";
 export type { Provider, SampleOptions } from "./provider.js";

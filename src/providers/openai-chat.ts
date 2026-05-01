@@ -102,23 +102,42 @@ type AdapterArgs = {
 };
 
 function buildAdapter(args: AdapterArgs): Provider {
-  // Cache collision check per (provider × space identity) since space is
-  // per-call. Using JSON-canonicalized space as a memo key.
+  // Memo for first-token collision results, keyed by canonical-JSON of the
+  // space. Both the eager `validate(space)` hook (called at classifier
+  // construction by the engine) and the defense-in-depth `sample()` check
+  // share this memo so repeat passes are zero-cost.
   const collisionMemo = new Set<string>();
+  const tokenizer = args.tokenizer;
+
+  // Eager construction-time validation: surfaces decision_space_collision
+  // at `domovoi.classifier({...})` time when this adapter is in the chain.
+  // Defined only when a tokenizer is available (cl100k for hosted OpenAI;
+  // explicit opt-in for openaiCompat). Backends without tokenizer info
+  // (Ollama default) omit this hook so the engine skips it.
+  const eagerValidate =
+    tokenizer === undefined
+      ? {}
+      : {
+          validate: (space: readonly string[]): void => {
+            ensureNoCollisions(tokenizer, space, collisionMemo);
+          },
+        };
 
   return {
     id: args.id,
     modelId: args.modelId,
     tokenizerId: args.tokenizerId,
     capabilities: args.capabilities,
+    ...eagerValidate,
 
     async sample<T extends string>(
       input: string,
       space: readonly T[],
       opts: SampleOptions,
     ): Promise<Distribution<T>> {
-      // Tokenizer-aware path: first-token collision check + logit_bias.
-      const tokenizer = args.tokenizer;
+      // Tokenizer-aware path: first-token collision (defense-in-depth — engine
+      // already calls validate() at construction; this catches any caller that
+      // bypassed validateClassifierConfig) + logit_bias + token-id matching.
       let logitBias: Record<string, number> | undefined;
       let inSpaceFirstTokenIds: Map<number, T> | undefined;
       if (tokenizer !== undefined) {
@@ -236,7 +255,8 @@ function buildDistributionByStringMatch<T extends string>(
     let bestProb = 0;
     for (const entry of tokenLogprobs) {
       const tok = entry.token.trim();
-      if (tok === trimmed || (tok.length > 0 && trimmed.startsWith(tok))) {
+      // tok must be non-empty before .startsWith — every string starts with "".
+      if (tok === trimmed || (tok && trimmed.startsWith(tok))) {
         const prob = Math.exp(entry.logprob);
         if (prob > bestProb) bestProb = prob;
       }

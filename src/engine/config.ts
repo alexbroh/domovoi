@@ -111,8 +111,18 @@ export type ValidateClassifierConfigInput<T extends string> = {
  * Validate a classifier configuration at construction. Throws ConfigError
  * with appropriate `code` on any validation failure.
  *
- * Used by the `classifier({...})` factory and by one-shot verbs (which validate
- * lazily on first call).
+ * Validation order (each step throws ConfigError on failure):
+ *   1. `name` (G10): regex-shape check
+ *   2. `space` (J2): empty / duplicate / whitespace / singleton
+ *   3. `providers` chain (M1, lock #1): non-empty + chain-min top-K cap
+ *   4. `thresholds` (H1): range + binary deadband ordering
+ *   5. `calibrator` × providers (S3): multi_sample = identity-only
+ *   6. Each provider's optional `validate(space)` hook — gives tokenizer-aware
+ *      adapters (e.g., OpenAI) the chance to detect first-token collisions
+ *      eagerly at classifier construction rather than lazily on first sample.
+ *
+ * Used by `classifier({...})` and by one-shot verbs (which validate lazily on
+ * first call).
  */
 export function validateClassifierConfig<T extends string>(
   input: ValidateClassifierConfigInput<T>,
@@ -122,4 +132,10 @@ export function validateClassifierConfig<T extends string>(
   validateProviderChain(input.providers, input.space.length);
   validateThresholds(input.thresholds, input.space.length);
   validateCalibratorCompatibility(isIdentityCalibrator(input.calibrator), input.providers);
+  // for-of: side-effect iteration; if any provider's validate throws, the
+  // exception propagates immediately (which forEach also supports, but for-of
+  // gives cleaner stack traces and matches modern TS conventions).
+  for (const provider of input.providers) {
+    provider.validate?.(input.space);
+  }
 }

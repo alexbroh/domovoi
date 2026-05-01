@@ -30,14 +30,13 @@ function canonicalize(value: unknown): unknown {
   if (value === null) return null;
   if (Array.isArray(value)) return value.map(canonicalize);
   if (typeof value !== "object") return value;
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  const out: Record<string, unknown> = {};
-  for (const k of keys) {
-    if (obj[k] === undefined) continue;
-    out[k] = canonicalize(obj[k]);
-  }
-  return out;
+  const record = value as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(record)
+      .sort()
+      .filter((key) => record[key] !== undefined)
+      .map((key) => [key, canonicalize(record[key])] as const),
+  );
 }
 
 /**

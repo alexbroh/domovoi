@@ -62,22 +62,21 @@ export function temperatureScaling(T: number): Calibrator {
   return {
     kind: "temperature",
     apply<U extends string>(d: Distribution<U>): Distribution<U> {
-      // p^(1/T) / Σ p_j^(1/T)
-      const scaled: Record<string, number> = {};
-      let sum = 0;
-      for (const [label, prob] of Object.entries(d.probs) as [string, number][]) {
-        const v = prob === 0 ? 0 : prob ** inverseT;
-        scaled[label] = v;
-        sum += v;
-      }
+      // p^(1/T) / Σ p_j^(1/T): two-pass — scale, then renormalize.
+      const scaledEntries = (Object.entries(d.probs) as [string, number][]).map(
+        ([label, prob]) => [label, prob === 0 ? 0 : prob ** inverseT] as const,
+      );
+      const partitionFn = scaledEntries.reduce(
+        (running, [, scaledProb]) => running + scaledProb,
+        0,
+      );
       // Defensive: if every prob is 0 (degenerate), pass through unchanged.
-      if (sum === 0) return d;
-      const normalized: Record<string, number> = {};
-      for (const [label, v] of Object.entries(scaled)) {
-        normalized[label] = v / sum;
-      }
+      if (partitionFn === 0) return d;
+      const normalizedProbs = Object.fromEntries(
+        scaledEntries.map(([label, scaledProb]) => [label, scaledProb / partitionFn] as const),
+      );
       return {
-        probs: normalized as Distribution<U>["probs"],
+        probs: normalizedProbs as Distribution<U>["probs"],
         coverage: d.coverage,
       };
     },

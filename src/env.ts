@@ -52,31 +52,32 @@ type ParsedEntry = {
 export function parseProvidersEnv(raw: string | undefined): readonly ParsedEntry[] {
   if (raw === undefined) return [];
   const trimmed = raw.trim();
-  if (trimmed.length === 0) return [];
+  if (!trimmed) return [];
 
-  const entries: ParsedEntry[] = [];
-  const parts = trimmed.split(",");
-  for (const part of parts) {
-    const entry = part.trim();
-    if (entry.length === 0) continue;
-    const slash = entry.indexOf("/");
-    if (slash < 0) {
-      throw new ConfigError(
-        `DOMOVOI_PROVIDERS: malformed entry ${JSON.stringify(entry)}; expected factory/model format.`,
-        { code: "malformed_provider_config" },
-      );
-    }
-    const factory = entry.slice(0, slash).trim();
-    const model = entry.slice(slash + 1).trim();
-    if (factory.length === 0 || model.length === 0) {
-      throw new ConfigError(
-        `DOMOVOI_PROVIDERS: malformed entry ${JSON.stringify(entry)}; factory or model is empty.`,
-        { code: "malformed_provider_config" },
-      );
-    }
-    entries.push({ factory, model });
+  return trimmed
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map(parseProviderEntry);
+}
+
+function parseProviderEntry(entry: string): ParsedEntry {
+  const slashIndex = entry.indexOf("/");
+  if (slashIndex < 0) {
+    throw new ConfigError(
+      `DOMOVOI_PROVIDERS: malformed entry ${JSON.stringify(entry)}; expected factory/model format.`,
+      { code: "malformed_provider_config" },
+    );
   }
-  return entries;
+  const factory = entry.slice(0, slashIndex).trim();
+  const model = entry.slice(slashIndex + 1).trim();
+  if (!factory || !model) {
+    throw new ConfigError(
+      `DOMOVOI_PROVIDERS: malformed entry ${JSON.stringify(entry)}; factory or model is empty.`,
+      { code: "malformed_provider_config" },
+    );
+  }
+  return { factory, model };
 }
 
 // ─── Resolve env to Providers ───────────────────────────────────────
@@ -99,8 +100,7 @@ export function resolveProvidersFromEnv(raw: string | undefined): readonly Provi
       { code: "missing_provider_config" },
     );
   }
-  const out: Provider[] = [];
-  for (const entry of entries) {
+  return entries.map((entry) => {
     const factory = BUILTIN_FACTORIES[entry.factory];
     if (factory === undefined) {
       throw new ConfigError(
@@ -108,9 +108,8 @@ export function resolveProvidersFromEnv(raw: string | undefined): readonly Provi
         { code: "unknown_provider_factory" },
       );
     }
-    out.push(factory(entry.model));
-  }
-  return out;
+    return factory(entry.model);
+  });
 }
 
 // ─── Per-classifier resolution ──────────────────────────────────────
@@ -131,7 +130,7 @@ export function resolveDefaultProviders(name?: string): readonly Provider[] {
   if (name !== undefined) {
     const namedKey = `DOMOVOI_PROVIDERS_${name.toUpperCase()}`;
     const namedRaw = process.env[namedKey];
-    if (namedRaw !== undefined && namedRaw.trim().length > 0) {
+    if (namedRaw?.trim()) {
       return resolveProvidersFromEnv(namedRaw);
     }
   }

@@ -44,6 +44,18 @@ export interface Provider {
   readonly tokenizerId: string;
   readonly capabilities: ProviderCapabilities;
 
+  /**
+   * Optional construction-time validation hook. When implemented, the engine
+   * invokes this from `validateClassifierConfig` for every provider in the
+   * chain. Implementations should throw `ConfigError` on validation failure
+   * (e.g., a tokenizer-aware adapter detecting a decision-space first-token
+   * collision before any network I/O).
+   *
+   * Engine guarantees this fires *before* any `sample()` call. Adapters that
+   * don't need eager validation can leave it undefined.
+   */
+  validate?(space: readonly string[]): void;
+
   sample<T extends string>(
     input: string,
     space: readonly T[],

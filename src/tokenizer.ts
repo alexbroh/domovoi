@@ -67,19 +67,23 @@ export function cl100kTokenizer(): Tokenizer {
  * Used by the OpenAI adapter (and other tokenizer-aware adapters) at
  * construction time to throw `ConfigError({ code: "decision_space_collision" })`
  * before any network I/O.
+ *
+ * Imperative form (rather than `reduce`) chosen for readability: the early
+ * return on first collision short-circuits naturally without the bookkeeping
+ * that a `reduce` accumulator would require.
  */
 export function findFirstTokenCollision(
   tokenizer: Tokenizer,
   space: readonly string[],
 ): { a: string; b: string; tokenId: number } | undefined {
-  const seen = new Map<number, string>();
+  const seenByTokenId = new Map<number, string>();
   for (const label of space) {
-    const id = tokenizer.firstTokenId(label);
-    const prior = seen.get(id);
-    if (prior !== undefined && prior !== label) {
-      return { a: prior, b: label, tokenId: id };
+    const tokenId = tokenizer.firstTokenId(label);
+    const priorLabel = seenByTokenId.get(tokenId);
+    if (priorLabel !== undefined && priorLabel !== label) {
+      return { a: priorLabel, b: label, tokenId };
     }
-    seen.set(id, label);
+    seenByTokenId.set(tokenId, label);
   }
   return undefined;
 }
@@ -96,10 +100,7 @@ export function buildLogitBias(
   space: readonly string[],
   bias = 100,
 ): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const label of space) {
-    const id = tokenizer.firstTokenId(label);
-    out[String(id)] = bias;
-  }
-  return out;
+  return Object.fromEntries(
+    space.map((label) => [String(tokenizer.firstTokenId(label)), bias] as const),
+  );
 }

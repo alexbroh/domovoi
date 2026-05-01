@@ -131,9 +131,29 @@ describe("openai adapter (cl100k tokenizer-aware)", () => {
     expect(dist.probs.no).toBe(0);
   });
 
-  it("throws ConfigError on first-token collision (decision_space_collision)", async () => {
+  it("throws ConfigError on first-token collision (decision_space_collision) — eagerly via validate(space)", () => {
     // 'yes' and 'yes2' both encode to the same first token in cl100k_base
-    // (the leading-space-prefixed " yes" token).
+    // (the leading-space-prefixed " yes" token). The eager validate hook
+    // should detect this without ever calling sample().
+    const provider = openai("gpt-4o-mini", { apiKey: "sk-test" });
+    expect(provider.validate).toBeDefined();
+    try {
+      provider.validate?.(["yes", "yes2"]);
+      expect.fail("expected ConfigError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ConfigError);
+      expect((err as ConfigError).code).toBe("decision_space_collision");
+    }
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("validate(space) is a no-op for collision-free spaces", () => {
+    const provider = openai("gpt-4o-mini", { apiKey: "sk-test" });
+    expect(() => provider.validate?.(["yes", "no"])).not.toThrow();
+    expect(() => provider.validate?.(["news", "sports", "music"])).not.toThrow();
+  });
+
+  it("sample() also catches collisions (defense-in-depth)", async () => {
     createMock.mockResolvedValue(logprobResponse([{ token: " yes", logprob: 0 }]));
     const provider = openai("gpt-4o-mini", { apiKey: "sk-test" });
     try {
@@ -143,7 +163,6 @@ describe("openai adapter (cl100k tokenizer-aware)", () => {
       expect(err).toBeInstanceOf(ConfigError);
       expect((err as ConfigError).code).toBe("decision_space_collision");
     }
-    // SDK should NOT have been called — collision check fires before I/O.
     expect(createMock).not.toHaveBeenCalled();
   });
 

@@ -42,7 +42,7 @@ export function validateSpace(space: readonly string[]): void {
       );
     }
     const normalized = label.normalize("NFC");
-    if (normalized.length === 0) {
+    if (!normalized) {
       throw new ConfigError(`Decision space label at index ${i} is empty.`, {
         code: "invalid_space",
       });

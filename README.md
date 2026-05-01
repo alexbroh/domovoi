@@ -5,10 +5,10 @@
 ```ts
 import { domovoi, isClassified } from "domovoi";
 
-const v = await domovoi.classify(input, ["news", "sports", "music"] as const);
-if (isClassified(v)) {
-  v.value;        // ← autocompletes "news" | "sports" | "music"
-  v.probability;  // ← number ∈ [0, 1]
+const verdict = await domovoi.classify(input, ["news", "sports", "music"] as const);
+if (isClassified(verdict)) {
+  verdict.value;        // ← autocompletes "news" | "sports" | "music"
+  verdict.probability;  // ← number ∈ [0, 1]
 }
 ```
 
@@ -138,40 +138,40 @@ That's the surface. Everything else is technical: `Provider`, `Calibrator`, `Cac
 ## Three idioms
 
 ```ts
-const v = await c(article);
+const verdict = await articleClassifier(article);
 
 // 1. Type guard — simple cases
-if (isClassified(v)) save(v.value);
+if (isClassified(verdict)) save(verdict.value);
 
 // 2. Switch on kind — full routing
-switch (v.kind) {
-  case "classified": save(v.value); break;
-  case "uncertain":  queue.review(v.top, v.runnerUp); break;
+switch (verdict.kind) {
+  case "classified": save(verdict.value); break;
+  case "uncertain":  reviewQueue.add(verdict.top, verdict.runnerUp); break;
   case "unknown":
-    switch (v.reason.type) {
-      case "out_of_distribution": newCategoryQueue.add(v.reason.topIfRenormalized); break;
-      case "provider_failure":    deadletter.push(v.reason.errors); break;
+    switch (verdict.reason.type) {
+      case "out_of_distribution": newCategoryQueue.add(verdict.reason.topIfRenormalized); break;
+      case "provider_failure":    deadLetterQueue.push(verdict.reason.errors); break;
       // ... cancelled, budget_exhausted, chain_exhausted, predicate_rejected
     }
     break;
 }
 
 // 3. match — exhaustive expression form
-match(v, {
-  classified: ({ value }) => save(value),
-  uncertain:  ({ top, runnerUp }) => queue.review(top, runnerUp),
-  unknown:    ({ reason }) => routeUnknown(reason),
+match(verdict, {
+  classified: ({ value })          => save(value),
+  uncertain:  ({ top, runnerUp })  => reviewQueue.add(top, runnerUp),
+  unknown:    ({ reason })         => handleUnknown(reason),
 });
 ```
 
 ## Provider chain + escalation
 
 ```ts
-const c = domovoi.classifier({
+const articleClassifier = domovoi.classifier({
   name: "articles",
   space: ["news", "sports", "music"] as const,
-  question: "Which category fits?",
-  format: (a: Article) => `${a.title}\n${a.body}`,
+  question: "Which category fits this article?",
+  format: (article: Article) => `${article.title}\n\n${article.body}`,
   thresholds: { high: 0.7, coverageMin: 0.5 },
   providers: [openai("gpt-4o-mini"), openai("gpt-4o")],
   calibrator: temperatureScaling(0.85),

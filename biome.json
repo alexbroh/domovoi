@@ -85,5 +85,24 @@
       "trailingCommas": "all",
       "arrowParentheses": "always"
     }
-  }
+  },
+  "overrides": [
+    {
+      "include": ["examples/**"],
+      "linter": {
+        "rules": {
+          "suspicious": { "noConsoleLog": "off" },
+          "correctness": { "noUnusedVariables": "off" }
+        }
+      }
+    },
+    {
+      "include": ["tests/**"],
+      "linter": {
+        "rules": {
+          "style": { "noNonNullAssertion": "off" }
+        }
+      }
+    }
+  ]
 }

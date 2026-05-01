@@ -1,6 +1,8 @@
 # domovoi
 
-Typed-uncertainty classification for TypeScript. Bind a domovoi to your code — a household spirit that lives in your runtime, judging cases as they arrive. Returns typed Verdicts with calibrated probability and structured failure modes.
+AI dispatch you sprinkle through ordinary code. Typed Verdicts at every fork. Bind a domovoi to your codebase — a household spirit that lives in your runtime, judging cases as they arrive. The same primitive scales from a one-line classifier to a budgeted, observable, replayable production flow.
+
+> **What ships today (v0.1):** the Verdict primitive — typed-uncertainty classification with calibrated probability and structured failure modes. **v0.2** adds ambient context propagation (`domovoi.scope` for budget / trace / cancellation across embedded calls). **v1** is production-ready. See the [Roadmap](#roadmap) below.
 
 ```ts
 import { domovoi, isClassified } from "domovoi";
@@ -260,15 +262,19 @@ const logger = pino({
 5. **No streaming** — `.stream` on Classifier is v1 (`.batch` ships in v0).
 6. **No few-shot prompting** — input passes verbatim; users wrap with their own example-injection if needed.
 
-## Roadmap (v1 priorities)
+## Roadmap
 
-1. OpenAI-compat cluster convenience factories (vLLM, Together, Fireworks).
-2. OpenAI Responses API adapter.
-3. Anthropic native adapter (multi-sample with verbalized confidence; `coverageMeasurement: "approximate"`).
-4. `Calibrator.fit(eval)` API.
-5. `.stream` on Classifier (AsyncIterable<Verdict<T>>).
-6. Persistent cache backend convenience factories (Redis, SQLite).
-7. Per-call retry policy.
+domovoi is a positioning play: AI dispatch as a method-call-shaped primitive that lives inside ordinary code. Order of releases — *what*, not *when*:
+
+**v0.1 (shipped).** The Verdict primitive: discriminated `Classified<T>` / `Uncertain<T>` / `Unknown<T>` with structured failure modes; `classify` / `boolean` / `classifier` verbs; calibration infrastructure; pluggable provider chain; tokenizer-aware OpenAI adapter; `Provider` / `Calibrator` / `Cache` extension points.
+
+**v0.2 (next).** Ambient context propagation. `domovoi.scope({ budget, signal, tracer }, fn)` opts into budget enforcement, tracing, and cancellation across embedded `domovoi.classify(...)` calls deep in your call tree — no prop-drilling. New public extension point: `ContextStorage<T>` (default backed by Node `AsyncLocalStorage`). Distribution-shaped test primitives. Embedded calls outside a scope work exactly as today — zero-disruption upgrade.
+
+**v1 (after v0.2).** Production-ready. Replay (re-run deterministic modules along the AI-decided path that actually happened, no new LLM calls). `Calibrator.fit(eval)` for fitting calibrators from labeled data. Provider matrix complete (Anthropic native multi-sample, Gemini, Cohere, vLLM, Together, Fireworks, OpenRouter convenience factories). First-party persistent caches (Redis, SQLite, Cloudflare KV). Built-in OpenTelemetry integration. `.stream` on Classifier. Determinism declarations (type-checked refusal of AI in regulated paths).
+
+**v2 horizon.** Multi-language ports (Python first; cache schema is language-neutral by design). Multi-modal Verdicts over images and audio. Online calibration from production traces.
+
+**Stability commitments:** the Verdict shape, the three core verbs, and the four error classes are stable across all of v0 / v0.2 / v1. The `Provider` / `Calibrator` / `Cache` extension interfaces are public — breaking them requires a major version bump. `0.x` releases may break their non-extension-point surfaces freely; pin an exact version if you need that stability today.
 
 ## Performance targets (aspirational)
 

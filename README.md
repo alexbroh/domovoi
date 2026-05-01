@@ -1,6 +1,6 @@
 # domovoi
 
-> Typed, calibrated AI dispatch as a method-call primitive for TypeScript.
+> **domovoi is an embedded intelligence-in-the-runtime — a primitive that lives inside your software.** Ask questions at the forks where rules don't fit; receive typed Verdicts; ship to production with bounded cost and full observability.
 
 ```ts
 import { domovoi, isClassified } from "domovoi";
@@ -51,7 +51,8 @@ A domovoi belongs at the forks where you'd otherwise write a brittle regex pile,
 
 - **Intent routing** — *"is this ticket a refund, complaint, or question?"* `Classified` flows to a handler; `Uncertain` flows to a human review queue; `Unknown { provider_failure }` flows to dead-letter.
 - **Smart triage** — *"which team owns this incident? which engineer for this code review?"* Replace the inbox-routing regex pile with a domovoi over your team taxonomy.
-- **Cost gating before expensive calls** — *"is this query worth `gpt-5`, or can we cheap out with `gpt-4o-mini`?"* A classifier-as-guard keeps your big-model bill bounded.
+- **Tiered dispatch** — chain `[gpt-4o-mini, gpt-5]` resolves cheaply when the model is confident and escalates to the expensive call only on `Uncertain`. Real money saved when ≥70–80% of inputs resolve at the cheap tier (pre-RAG gates, pre-action filters, editor-feature dispatch); break-even is on you.
+- **Ingestion-time batch classification** — *"categorize 100K menu items / auto-label every issue / triage the email backlog overnight."* `c.batch(items, { concurrency })` with provider chain + per-item Verdicts; failures stay isolated, the rest of the batch finishes.
 - **Moderation with human-in-the-loop** — *"is this content NSFW, spam, or fine?"* `Uncertain` is the entire moderation queue. Stop picking a fixed threshold and praying.
 - **Fuzzy validation beyond regex** — *"does this product description actually describe this product?"* The check that's trivial for a human and impossible for a regex.
 - **PR / code-review gating** — *"is this PR safe to auto-merge?"* `Classified { value: "yes", probability: 0.91 }` auto-merges; `Uncertain` requests human review with the runner-up carried in the Verdict.
@@ -196,146 +197,27 @@ Format: `factory/model[,factory/model...]`. First `/` separates factory from mod
 
 In-code overrides win — `domovoi.classifier({ ..., providers: [...] })` ignores env.
 
-## Local LLMs (free, runs on your machine)
+## Local LLMs
 
-Most local LLM runtimes ship OpenAI-compatible APIs. domovoi works with all of them:
+Local LLM runtimes ship OpenAI-compatible APIs. `ollama("llama-3.1-70b")` for Ollama (defaults to `localhost:11434`); `openaiCompat(model, { baseURL, apiKey })` for LM Studio, vLLM, Together, Fireworks, OpenRouter. Mix freely with hosted models in a single provider chain — `[ollama(...), openai(...)]` runs local primary, hosted fallback.
 
-```ts
-import { ollama, openaiCompat } from "domovoi/providers";
+## Cancellation
 
-// Ollama (defaults to localhost:11434)
-const local = ollama("llama-3.1-70b");
-
-// LM Studio
-const lmstudio = openaiCompat("local-model", {
-  baseURL: "http://localhost:1234/v1",
-  apiKey: "lmstudio",
-});
-
-// vLLM, Together, Fireworks, OpenRouter
-const fireworks = openaiCompat("accounts/fireworks/models/llama-3", {
-  baseURL: "https://api.fireworks.ai/inference/v1",
-  apiKey: process.env.FIREWORKS_API_KEY,
-});
-
-// Mixed chain — local primary, cloud fallback
-const c = domovoi.classifier({
-  ...,
-  providers: [local, openai("gpt-4o-mini")],
-});
-```
-
-## Cancellation (AbortSignal)
-
-Standard Web API. Pass `signal` to any call:
-
-```ts
-// React-style cleanup
-useEffect(() => {
-  const controller = new AbortController();
-  c(item, { signal: controller.signal }).then(setResult);
-  return () => controller.abort();
-}, [item]);
-
-// Deadline via AbortSignal.timeout
-await c(item, { signal: AbortSignal.timeout(5000) });
-
-// Combined parent + deadline via AbortSignal.any
-await c(item, {
-  signal: AbortSignal.any([parentSignal, AbortSignal.timeout(5000)]),
-});
-
-// .batch always returns partial results
-const results = await c.batch(items, { signal: controller.signal });
-// Finished items keep their Verdicts; in-flight + not-yet-started become Unknown { cancelled }
-```
-
-`controller.abort(reason)` — the reason propagates into `Unknown { cancelled, reason }`.
+Pass `signal` to any call. Standard Web API throughout: `AbortSignal.timeout(ms)`, `AbortSignal.any([parent, deadline])`, `controller.abort(reason)` — the reason propagates into `Unknown { cancelled, reason }`. `.batch` always returns partial results; finished items keep their Verdicts, in-flight and queued items become `Unknown { cancelled }`. The Promise resolves; it does not reject.
 
 ## Calibration
 
-domovoi ships closed-form scaling factories. **You** provide the fit parameters from your held-out eval set:
-
-```ts
-import { identity, temperatureScaling, plattScaling } from "domovoi/calibration";
-
-// Default: identity (no calibration)
-domovoi.classifier({ ..., calibrator: identity });
-
-// Temperature scaling (any space size)
-domovoi.classifier({ ..., calibrator: temperatureScaling(0.85) });
-
-// Platt scaling (binary only)
-domovoi.classifier({ space: ["yes","no"] as const, ..., calibrator: plattScaling({ a: 1.2, b: -0.3 }) });
-```
-
-`Calibrator.fit(eval)` (fit calibrators from labeled data) lands in v1.
+Three closed-form scaling factories from `domovoi/calibration`: `identity` (default — no calibration), `temperatureScaling(T)` (any space size), `plattScaling({ a, b })` (binary only). Fit parameters come from *your* held-out eval set; `Calibrator.fit(eval)` lands in v1. Multi-sample providers are identity-only in v0.
 
 ## Cache
 
-domovoi caches raw distributions per `(input, provider)` keyed by SHA-256. Default in-memory LRU; size configurable:
+Raw distributions cached per `(input, provider)` keyed by SHA-256. Default: in-memory LRU, 10k entries per-classifier; pass `cache: domovoi.memoryCache({ maxEntries })` to override. Two invariants worth knowing: the cache hashes the *output* of `format(input)` (not the function itself — two classifiers with different `format` but identical output share rows), and the calibrator runs **per-caller** after cache resolution (different calibrator configs on the same cache key produce different Verdicts from the same raw Distribution).
 
-```ts
-domovoi.classifier({
-  ...,
-  cache: domovoi.memoryCache({ maxEntries: 50_000 }),  // optional; defaults to 10k per-classifier
-});
-```
-
-**Cache invariants:**
-- The cache hashes the *output* of `format(input)`, not the `format` function itself. Two classifiers with different `format` but identical formatted strings share cache rows.
-- Calibrator runs **per-caller** after cache resolution. Two classifiers with different calibrator configs hitting the same cache key get the same raw Distribution but produce different Verdicts.
-- Cache is per-classifier by default. For shared cache, pass an explicit instance to multiple classifiers.
-
-**Custom cache backends** (Redis, SQLite, Cloudflare KV) — implement the public `Cache` interface:
-
-```ts
-interface Cache {
-  get(key: string): Promise<string | undefined>;
-  set(key: string, value: string, ttlMs?: number): Promise<void>;
-  delete(key: string): Promise<void>;
-}
-```
-
-Engine handles serialization; backends are dead-simple key-value stores.
+Custom backends — Redis, SQLite, Cloudflare KV — implement the public `Cache` interface (`get`, `set`, `delete` over opaque strings); engine handles serialization.
 
 ## Extension points
 
-Three public interfaces. Implement them for backends domovoi doesn't ship:
-
-- **`Provider`** — adapter for any LLM API (vLLM with custom auth, your-org's internal LLM gateway, etc.)
-- **`Calibrator`** — custom calibration (Bayesian smoothing, ensemble averaging)
-- **`Cache`** — persistent / distributed backends
-
-Plus `mockProvider` from `domovoi/testing` for unit tests:
-
-```ts
-import { mockProvider } from "domovoi/testing";
-
-const c = domovoi.classifier({
-  ...,
-  providers: [
-    mockProvider({
-      behavior: (input, space) => ({ probs: { news: 0.8, sports: 0.1, music: 0.1 }, coverage: 0.95 }),
-    }),
-  ],
-});
-```
-
-## Sensitive data in error logs
-
-domovoi records provider errors verbatim into `Verdict.meta.providerErrors[].error` (typed plain object — `JSON.stringify` works naturally). Provider error messages may contain credentials.
-
-**Redact at the consumer boundary** (industry pattern — Pino, Winston, Sentry, OpenTelemetry):
-
-```ts
-const logger = pino({
-  redact: [
-    '*.meta.providerErrors[*].error.message',
-    '*.meta.providerErrors[*].error.stack',
-  ],
-});
-```
+Three public interfaces for backends domovoi doesn't ship: `Provider` (any LLM API), `Calibrator` (custom calibration math), `Cache` (persistent/distributed). Plus `mockProvider` from `domovoi/testing` for unit tests with controllable Distribution outputs.
 
 ## v0 limitations
 
@@ -359,12 +241,6 @@ domovoi is a positioning play: AI dispatch as a method-call-shaped primitive tha
 **v2 horizon.** Multi-language ports (Python first; cache schema is language-neutral by design). Multi-modal Verdicts over images and audio. Online calibration from production traces.
 
 **Stability commitments:** the Verdict shape, the three core verbs, and the four error classes are stable across all of v0 / v0.2 / v1. The `Provider` / `Calibrator` / `Cache` extension interfaces are public — breaking them requires a major version bump. `0.x` releases may break their non-extension-point surfaces freely; pin an exact version if you need that stability today.
-
-## Performance targets (aspirational)
-
-- Engine overhead per call: < 1ms (excluding provider call latency).
-- Cache hit latency: < 0.1ms.
-- Memory per cache entry: < 500 bytes (varies with decision space size).
 
 ## License
 

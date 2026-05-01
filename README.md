@@ -14,7 +14,7 @@ if (isClassified(v)) {
 
 **That's it.** The decision space narrows the output type. No user-written generics. No `import * as`. One line.
 
-> **v0.1 — the Verdict primitive.** Typed-uncertainty classification with calibrated probability and structured failure modes. **v0.2** adds ambient context propagation (`domovoi.scope` for budget / trace / cancellation across embedded calls — the embedded-worker concept fully realized). **v1** is production-ready embedded AI dispatch. See the [Roadmap](#roadmap) below.
+> **Today:** the Verdict primitive — typed-uncertainty classification with calibrated probability and structured failure modes. **Coming next:** ambient context propagation (`domovoi.scope` for budget / trace / cancellation across embedded calls — the embedded-worker concept fully realized). See the [Roadmap](#roadmap) for the trajectory toward production-ready.
 
 ---
 
@@ -34,7 +34,7 @@ The existing toolkit doesn't fit the job. Free-form LLM generation forces you to
 ## Features
 
 - **Typed Verdicts** — `Classified<T> | Uncertain<T> | Unknown<T>` discriminated union; failure-to-classify is a first-class typed result, not a thrown exception.
-- **Calibrated probabilities** — temperature scaling, Platt scaling, identity. You supply fit parameters; `Calibrator.fit()` lands in v1.
+- **Calibrated probabilities** — temperature scaling, Platt scaling, identity. You supply fit parameters today; fitting from labeled data is on the roadmap.
 - **Provider chain with fallback** — escalate on uncertainty or error; structured per-attempt error metadata.
 - **AbortSignal cancellation** — native, throughout. `AbortSignal.timeout`, `AbortSignal.any` compose naturally.
 - **Tokenizer-aware** — `cl100k_base` for first-token collision detection and logit_bias steering on hosted OpenAI; string-prefix fallback for backends with unknown tokenizers.
@@ -207,7 +207,7 @@ Pass `signal` to any call. Standard Web API throughout: `AbortSignal.timeout(ms)
 
 ## Calibration
 
-Three closed-form scaling factories from `domovoi/calibration`: `identity` (default — no calibration), `temperatureScaling(T)` (any space size), `plattScaling({ a, b })` (binary only). Fit parameters come from *your* held-out eval set; `Calibrator.fit(eval)` lands in v1. Multi-sample providers are identity-only in v0.
+Three closed-form scaling factories from `domovoi/calibration`: `identity` (default — no calibration), `temperatureScaling(T)` (any space size), `plattScaling({ a, b })` (binary only). Fit parameters come from *your* held-out eval set; a `Calibrator.fit(eval)` API for fitting from labeled data is on the roadmap. Multi-sample providers are identity-only for now.
 
 ## Cache
 
@@ -219,28 +219,28 @@ Custom backends — Redis, SQLite, Cloudflare KV — implement the public `Cache
 
 Three public interfaces for backends domovoi doesn't ship: `Provider` (any LLM API), `Calibrator` (custom calibration math), `Cache` (persistent/distributed). Plus `mockProvider` from `domovoi/testing` for unit tests with controllable Distribution outputs.
 
-## v0 limitations
+## Current limitations
 
-1. **Single adapter family** — OpenAI Chat + OpenAI-compatible runtimes (Ollama, vLLM, LM Studio, Together, Fireworks). Anthropic native is v1 (multi-sample with verbalized confidence).
-2. **In-memory cache only** — process-local; serverless cold starts begin empty. Persistent backends (Redis, SQLite, KV) implementable today via the public Cache interface.
-3. **Identity calibrator default** — provide `temperatureScaling(T)` or `plattScaling({a,b})` parameters fitted on your eval set for real calibration. `Calibrator.fit()` is v1.
-4. **No retries on `ProviderError`** — chain fallback covers between-provider failures; per-provider retries are v1.
-5. **No streaming** — `.stream` on Classifier is v1 (`.batch` ships in v0).
+1. **Single adapter family** — OpenAI Chat + OpenAI-compatible runtimes (Ollama, vLLM, LM Studio, Together, Fireworks). Anthropic native (multi-sample with verbalized confidence) is on the roadmap.
+2. **In-memory cache only** — process-local; serverless cold starts begin empty. Persistent backends (Redis, SQLite, KV) are implementable today via the public `Cache` interface.
+3. **Identity calibrator default** — provide `temperatureScaling(T)` or `plattScaling({a,b})` parameters fitted on your eval set for real calibration. A `Calibrator.fit()` API for fitting from labeled data is planned.
+4. **No retries on `ProviderError`** — chain fallback covers between-provider failures; per-provider retries are planned.
+5. **No streaming** — `.stream` on `Classifier` is planned (`.batch` ships today).
 6. **No few-shot prompting** — input passes verbatim; users wrap with their own example-injection if needed.
 
 ## Roadmap
 
-domovoi is a positioning play: AI dispatch as a method-call-shaped primitive that lives inside ordinary code. Order of releases — *what*, not *when*:
+domovoi is a positioning play: AI dispatch as a method-call-shaped primitive that lives inside ordinary code. Ordered milestones — *what*, not *when*. This section commits to scope and order, not calendar or version numbering; specific version numbers live on the npm package page and in the GitHub releases.
 
-**v0.1 (shipped).** The Verdict primitive: discriminated `Classified<T>` / `Uncertain<T>` / `Unknown<T>` with structured failure modes; `classify` / `boolean` / `classifier` verbs; calibration infrastructure; pluggable provider chain; tokenizer-aware OpenAI adapter; `Provider` / `Calibrator` / `Cache` extension points.
+**Today.** The Verdict primitive: discriminated `Classified<T>` / `Uncertain<T>` / `Unknown<T>` with structured failure modes; `classify` / `boolean` / `classifier` verbs; calibration infrastructure; pluggable provider chain; tokenizer-aware OpenAI adapter; `Provider` / `Calibrator` / `Cache` extension points.
 
-**v0.2 (next).** Ambient context propagation. `domovoi.scope({ budget, signal, tracer }, fn)` opts into budget enforcement, tracing, and cancellation across embedded `domovoi.classify(...)` calls deep in your call tree — no prop-drilling. New public extension point: `ContextStorage<T>` (default backed by Node `AsyncLocalStorage`). Distribution-shaped test primitives. Embedded calls outside a scope work exactly as today — zero-disruption upgrade.
+**Next.** Ambient context propagation. `domovoi.scope({ budget, signal, tracer }, fn)` opts into budget enforcement, tracing, and cancellation across embedded `domovoi.classify(...)` calls deep in your call tree — no prop-drilling. New public extension point: `ContextStorage<T>` (default backed by Node `AsyncLocalStorage`). Distribution-shaped test primitives. Embedded calls outside a scope work exactly as today — zero-disruption upgrade.
 
-**v1 (after v0.2).** Production-ready. Replay (re-run deterministic modules along the AI-decided path that actually happened, no new LLM calls). `Calibrator.fit(eval)` for fitting calibrators from labeled data. Provider matrix complete (Anthropic native multi-sample, Gemini, Cohere, vLLM, Together, Fireworks, OpenRouter convenience factories). First-party persistent caches (Redis, SQLite, Cloudflare KV). Built-in OpenTelemetry integration. `.stream` on Classifier. Determinism declarations (type-checked refusal of AI in regulated paths).
+**After that.** Production-ready embedded AI dispatch. Replay (re-run deterministic modules along the AI-decided path that actually happened, no new LLM calls). `Calibrator.fit(eval)` for fitting calibrators from labeled data. Provider matrix complete (Anthropic native multi-sample, Gemini, Cohere, vLLM, Together, Fireworks, OpenRouter convenience factories). First-party persistent caches (Redis, SQLite, Cloudflare KV). Built-in OpenTelemetry integration. `.stream` on `Classifier`. Determinism declarations (type-checked refusal of AI in regulated paths).
 
-**v2 horizon.** Multi-language ports (Python first; cache schema is language-neutral by design). Multi-modal Verdicts over images and audio. Online calibration from production traces.
+**Horizon.** Multi-language ports (Python first; cache schema is language-neutral by design). Multi-modal Verdicts over images and audio. Online calibration from production traces.
 
-**Stability commitments:** the Verdict shape, the three core verbs, and the four error classes are stable across all of v0 / v0.2 / v1. The `Provider` / `Calibrator` / `Cache` extension interfaces are public — breaking them requires a major version bump. `0.x` releases may break their non-extension-point surfaces freely; pin an exact version if you need that stability today.
+**Stability commitments.** The Verdict shape, the three core verbs, and the four error classes are stable across releases. The `Provider` / `Calibrator` / `Cache` extension interfaces are public — breaking them requires a major version bump. Pre-1.0 releases may break their non-extension-point surfaces freely; pin an exact version if you need that stability today.
 
 ## License
 

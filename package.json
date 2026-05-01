@@ -48,7 +48,7 @@
     "prepublishOnly": "npm run check && npm run typecheck && npm test && npm run validate:pack"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "keywords": [
     "classification",

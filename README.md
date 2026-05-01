@@ -1,16 +1,6 @@
 # domovoi
 
-Software has been deterministic by convention — every fork in the code is a hand-coded predicate, every route a rule someone wrote down. The interesting decisions often resist enumeration: *is this email a complaint?* *is this PR safe to auto-merge?* *is this user's intent to reorder or cancel?* domovoi treats AI as an **embedded worker** for exactly that class of fork — a primitive you sprinkle through ordinary code at the points where rules don't fit. Each module stays deterministic; the glue between them becomes runtime-decided, typed, and budgeted. *Living software*, in the precise sense — bounded structural non-determinism, not unbounded autonomy.
-
-## Why "domovoi"
-
-In Slavic folklore, a *domovoi* (домово́й — "of the house") is a household guardian spirit. Bound to the dwelling. Inherited with the property. Performing ongoing protective service for whoever lives there next. Not a tool you summon from outside. Not an autonomous agent with its own agenda. A spirit that *lives inside* the home, watches over the cases the household brings it, and renders verdicts.
-
-The metaphor maps cleanly to the technical scope. domovoi is **bound** to your runtime — it's not a remote service, it's a library that lives inside your process. **Embedded** across module boundaries — every module can reach for the same domovoi at any decision point, without ceremony. **Judging with calibrated probability and structured uncertainty** — when the answer is clear, you get a typed `Classified<T>`; when it's not, you get an `Uncertain` or `Unknown` with the reason discriminated, never a thrown exception or a silent miscall.
-
-Other names for this thing were considered and discarded. *Familiar* and *augur* carry biblical condemnation (Lev 19:31, Deut 18:10–11) — wrong values for a tool meant to be trustworthy. *Djinn* and *genie* connote trickster behavior — wrong reliability framing. *Agent* and *worker* are taken by adjacent paradigms (autonomous agents, queue workers) that domovoi explicitly is not. *Domovoi* is pre-Christian Slavic folkloric, accessible in pronunciation ("doh-mo-VOY"), and carries the exact connotation we need: a benign, embedded, judgment-rendering presence that's part of the dwelling itself.
-
-Bind a domovoi to your codebase. Receive Verdicts. Ship.
+> Typed, calibrated AI dispatch as a method-call primitive for TypeScript.
 
 ```ts
 import { domovoi, isClassified } from "domovoi";
@@ -22,9 +12,93 @@ if (isClassified(v)) {
 }
 ```
 
-The decision space narrows the output type. No user-written generics. No `import * as`. One line.
+**That's it.** The decision space narrows the output type. No user-written generics. No `import * as`. One line.
 
-> **What ships today (v0.1):** the Verdict primitive — typed-uncertainty classification with calibrated probability and structured failure modes. **v0.2** adds ambient context propagation (`domovoi.scope` for budget / trace / cancellation across embedded calls — the embedded-worker concept fully realized). **v1** is production-ready. See the [Roadmap](#roadmap) below.
+> **v0.1 — the Verdict primitive.** Typed-uncertainty classification with calibrated probability and structured failure modes. **v0.2** adds ambient context propagation (`domovoi.scope` for budget / trace / cancellation across embedded calls — the embedded-worker concept fully realized). **v1** is production-ready embedded AI dispatch. See the [Roadmap](#roadmap) below.
+
+---
+
+Software has been deterministic by convention — every fork in the code is a hand-coded predicate, every route a rule someone wrote down. The interesting decisions often resist enumeration: *is this email a complaint?* *is this PR safe to auto-merge?* *is this user's intent to reorder or cancel?* domovoi treats AI as an **embedded worker** for exactly that class of fork — a primitive you sprinkle through ordinary code at the points where rules don't fit. Each module stays deterministic; the glue between them becomes runtime-decided, typed, and budgeted. *Living software*, in the precise sense — bounded structural non-determinism, not unbounded autonomy.
+
+The existing toolkit doesn't fit the job. Free-form LLM generation forces you to parse and pray. Strict structured output collapses uncertainty into argmax — no signal when the model is unsure or the input falls outside your decision space. Agent frameworks (LangGraph, LangChain) treat AI as an autonomous orchestrator and demand you adopt a framework. Workflow engines (Temporal, Inngest) treat AI as a service *they* call, not a primitive *you* call. domovoi is the missing piece: a library-shaped primitive for AI dispatch at the forks where rules don't fit. Ergonomic as a method call. Typed as a discriminated union. Observable as a Verdict trace.
+
+|                              | domovoi                              | LangGraph             | Temporal / Inngest      | Vanilla LLM SDK    |
+| ---------------------------- | ------------------------------------ | --------------------- | ----------------------- | ------------------ |
+| **Shape**                    | Library you sprinkle                 | Framework you adopt   | Workflow engine         | Service client     |
+| **AI in routing decisions**  | Yes (typed)                          | Yes (untyped state)   | No                      | N/A                |
+| **Typed uncertainty**        | `Classified \| Uncertain \| Unknown` | Free-form state       | Hand-coded              | Argmax string only |
+| **Calibrated probability**   | First-class                          | No                    | No                      | No                 |
+| **Cancellation**             | `AbortSignal` native                 | Manual                | Native                  | Provider-specific  |
+| **Per-call cost / latency**  | ~50–500ms, one LLM call              | Per-step, agent-loop  | Workflow-orchestrated   | Per-call           |
+
+## Features
+
+- **Typed Verdicts** — `Classified<T> | Uncertain<T> | Unknown<T>` discriminated union; failure-to-classify is a first-class typed result, not a thrown exception.
+- **Calibrated probabilities** — temperature scaling, Platt scaling, identity. You supply fit parameters; `Calibrator.fit()` lands in v1.
+- **Provider chain with fallback** — escalate on uncertainty or error; structured per-attempt error metadata.
+- **AbortSignal cancellation** — native, throughout. `AbortSignal.timeout`, `AbortSignal.any` compose naturally.
+- **Tokenizer-aware** — `cl100k_base` for first-token collision detection and logit_bias steering on hosted OpenAI; string-prefix fallback for backends with unknown tokenizers.
+- **Pluggable extension points** — `Provider`, `Calibrator`, `Cache` as public interfaces. Build your own without forking.
+- **Local LLMs** — Ollama, vLLM, LM Studio, Together, Fireworks, OpenRouter via `openaiCompat`.
+
+## Why "domovoi"
+
+In Slavic folklore, a *domovoi* (домово́й — "of the house") is a household guardian spirit. Bound to the dwelling, inherited with the property, performing ongoing protective service for whoever lives there next. Not a tool you summon from outside. Not an autonomous agent with its own agenda. A spirit that *lives inside* the home, watches over the cases the household brings it, and renders verdicts. **Bind a domovoi to your codebase. Receive Verdicts. Ship.**
+
+## Where this fits
+
+A domovoi belongs at the forks where you'd otherwise write a brittle regex pile, defer to a human, or skip the decision entirely:
+
+- **Intent routing** — *"is this ticket a refund, complaint, or question?"* `Classified` flows to a handler; `Uncertain` flows to a human review queue; `Unknown { provider_failure }` flows to dead-letter.
+- **Smart triage** — *"which team owns this incident? which engineer for this code review?"* Replace the inbox-routing regex pile with a domovoi over your team taxonomy.
+- **Cost gating before expensive calls** — *"is this query worth `gpt-5`, or can we cheap out with `gpt-4o-mini`?"* A classifier-as-guard keeps your big-model bill bounded.
+- **Moderation with human-in-the-loop** — *"is this content NSFW, spam, or fine?"* `Uncertain` is the entire moderation queue. Stop picking a fixed threshold and praying.
+- **Fuzzy validation beyond regex** — *"does this product description actually describe this product?"* The check that's trivial for a human and impossible for a regex.
+- **PR / code-review gating** — *"is this PR safe to auto-merge?"* `Classified { value: "yes", probability: 0.91 }` auto-merges; `Uncertain` requests human review with the runner-up carried in the Verdict.
+
+The pattern in every case: *the fork is hard for code and easy for a human; the cost of being wrong is bounded; you want a typed verdict you can dispatch on, not a free-form string you have to parse.* These are the cases domovois exist to handle.
+
+## Before / after
+
+Routing a support ticket without a domovoi: a regex pile that grows every time someone reports a misroute, and that silently misclassifies whenever an input phrasing isn't anticipated.
+
+```ts
+function routeTicket(ticket: Ticket) {
+  if (/\b(refund|return|money[- ]?back|charge[- ]?back)\b/i.test(ticket.body)) {
+    return handleRefund(ticket);
+  }
+  if (/\b(broken|doesn'?t work|not working|defective|stopped working)\b/i.test(ticket.body)) {
+    return handleComplaint(ticket);
+  }
+  if (/\?\s*$/.test(ticket.body) || /\b(how|why|when|where)\b/i.test(ticket.body)) {
+    return handleQuestion(ticket);
+  }
+  // What about "I want my money back, this is broken"? Falls to triage.
+  // Triage drowns. Bug reports follow. Add a regex. Repeat.
+  return triage(ticket);
+}
+```
+
+Routing the same ticket *with* a domovoi at the fork:
+
+```ts
+import { domovoi, match } from "domovoi";
+
+async function routeTicket(ticket: Ticket) {
+  const intent = await domovoi.classify(
+    ticket.body,
+    ["refund", "complaint", "question"] as const,
+    { question: "What is this customer asking for?" },
+  );
+  return match(intent, {
+    classified: ({ value })           => handlers[value](ticket),
+    uncertain:  ({ top, runnerUp })   => humanReview.queue(ticket, top, runnerUp),
+    unknown:    ()                    => triage(ticket),
+  });
+}
+```
+
+The regex pile becomes a typed three-class space. The "I want my money back, this is broken" ambiguity becomes an `Uncertain` Verdict with `top: "complaint"` and `runnerUp: "refund"` — your human review queue gets it with both candidates already named. The triage path narrows from "everything we couldn't match" to "the LLM provider failed, we don't know what to do," which is what triage should actually mean.
 
 ---
 

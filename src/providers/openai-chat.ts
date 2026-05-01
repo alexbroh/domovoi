@@ -14,13 +14,13 @@
  */
 
 import OpenAI from "openai";
-import { ConfigError, ProviderError, canonicalizeProviderThrow } from "../errors.js";
+import { ConfigError, canonicalizeProviderThrow, ProviderError } from "../errors.js";
 import { renderSystemPrompt, renderUserPrompt } from "../prompt.js";
 import {
-  type Tokenizer,
   buildLogitBias,
   cl100kTokenizer,
   findFirstTokenCollision,
+  type Tokenizer,
 } from "../tokenizer.js";
 import type { Distribution, ProviderCapabilities } from "../types.js";
 import type { Provider, SampleOptions } from "./provider.js";
@@ -37,7 +37,6 @@ export type OpenAIModel =
   | "o1-mini"
   | "o1-preview"
   | "gpt-3.5-turbo"
-  // biome-ignore lint/complexity/noBannedTypes: escape hatch idiom for autocomplete + free-form
   | (string & {});
 
 export type OpenAIProviderOptions = {

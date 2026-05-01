@@ -7,13 +7,13 @@
 import { assertType, describe, expectTypeOf, test } from "vitest";
 import {
   type Classified,
-  type Uncertain,
-  type Unknown,
-  type Verdict,
   isClassified,
   isUncertain,
   isUnknown,
   match,
+  type Uncertain,
+  type Unknown,
+  type Verdict,
 } from "../src/index.js";
 
 declare const v: Verdict<"a" | "b" | "c">;

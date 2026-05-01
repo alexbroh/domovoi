@@ -9,15 +9,15 @@
  */
 
 import {
-  InFlight,
   computeCacheKey,
   deserializeCachedValue,
+  InFlight,
   serializeCachedValue,
 } from "../cache.js";
 import {
   BudgetExhaustedError,
-  ProviderError,
   canonicalizeProviderThrow,
+  ProviderError,
   serializeError,
 } from "../errors.js";
 import type { Provider } from "../providers/provider.js";
@@ -36,7 +36,7 @@ import {
   type DecideConfig,
 } from "./config.js";
 import { fireAndForget } from "./hooks.js";
-import { type MetaBuilder, buildMeta, buildMetaForFailure, makeMetaBuilder } from "./meta.js";
+import { buildMeta, buildMetaForFailure, type MetaBuilder, makeMetaBuilder } from "./meta.js";
 import { applyThresholds } from "./threshold.js";
 
 /**

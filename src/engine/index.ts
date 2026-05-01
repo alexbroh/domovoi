@@ -5,7 +5,6 @@
  * modules (threshold, meta, abort, hooks) stay private.
  */
 
-export { decide } from "./decide.js";
 export {
   type DecideConfig,
   type DecideConfigInput,
@@ -15,3 +14,4 @@ export {
   validateClassifierConfig,
   withDefaults,
 } from "./config.js";
+export { decide } from "./decide.js";

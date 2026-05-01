@@ -2,12 +2,12 @@
  * Public exports from `domovoi/providers` subpath.
  */
 
-export type { Provider, SampleOptions } from "./provider.js";
 export {
-  openai,
-  ollama,
-  openaiCompat,
+  type OpenAICompatOptions,
   type OpenAIModel,
   type OpenAIProviderOptions,
-  type OpenAICompatOptions,
+  ollama,
+  openai,
+  openaiCompat,
 } from "./openai-chat.js";
+export type { Provider, SampleOptions } from "./provider.js";

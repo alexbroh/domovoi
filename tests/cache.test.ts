@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   CACHE_SCHEMA_VERSION,
-  InFlight,
   computeCacheKey,
   deserializeCachedValue,
+  InFlight,
   memoryCache,
   serializeCachedValue,
 } from "../src/cache.js";

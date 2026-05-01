@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  type Verdict,
-  type VerdictMeta,
   filter,
   isClassified,
   isUncertain,
   isUnknown,
   match,
+  type Verdict,
+  type VerdictMeta,
 } from "../src/index.js";
 
 const META: VerdictMeta = {

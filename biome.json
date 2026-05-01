@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.13/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "ignore": ["dist/**", "node_modules/**", "coverage/**"]
+    "includes": ["**", "!**/dist", "!**/node_modules", "!**/coverage"]
   },
   "formatter": {
     "enabled": true,
@@ -69,9 +69,9 @@
       },
       "suspicious": {
         "noExplicitAny": "error",
-        "noConsoleLog": "warn",
         "noEmptyInterface": "error",
-        "useAwait": "off"
+        "useAwait": "off",
+        "noConsole": { "level": "warn", "options": { "allow": ["log"] } }
       },
       "performance": {
         "noAccumulatingSpread": "warn"
@@ -88,16 +88,16 @@
   },
   "overrides": [
     {
-      "include": ["examples/**"],
+      "includes": ["**/examples/**"],
       "linter": {
         "rules": {
-          "suspicious": { "noConsoleLog": "off" },
+          "suspicious": { "noConsole": { "level": "off", "options": { "allow": ["log"] } } },
           "correctness": { "noUnusedVariables": "off" }
         }
       }
     },
     {
-      "include": ["tests/**"],
+      "includes": ["**/tests/**"],
       "linter": {
         "rules": {
           "style": { "noNonNullAssertion": "off" }

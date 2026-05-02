@@ -7,21 +7,23 @@
 **domovoi is an embedded intelligence-in-the-runtime. Not a service, but a primitive that lives inside your software.** Ask questions at the forks where rules don't fit; receive typed Verdicts; ship to production with bounded cost and full observability.
 
 ```ts
-import { domovoi, isClassified } from "domovoi";
+import { domovoi, match } from "domovoi";
 
-const merchant = "NETFLIX.COM";
+// 1. Classify
 const verdict = await domovoi.classify(
-  merchant,
+  "NETFLIX.COM",
   ["shopping", "groceries", "dining", "transportation", "subscriptions"],
 );
 
-if (isClassified(verdict)) {
-  verdict.value;        // → "subscriptions"
-  verdict.probability;  // → 1.00
-}
+// 2. Dispatch — each branch gets typed access to its slice of the Verdict
+await match(verdict, {
+  classified: ({ value })         => categories.assign(value),
+  uncertain:  ({ top, runnerUp }) => reviewQueue.add(top, runnerUp),
+  unknown:    ({ reason })        => deadletter.send(reason),
+});
 ```
 
-**That's it.**
+**That's it.** The classification gives you a typed Verdict; the dispatch is where the work actually happens. Same shape every time: route the confident cases to handlers, route the ambiguous ones to humans, route the failures somewhere observable.
 
 Other places this shape shows up in product code:
 

@@ -22,8 +22,6 @@ if (isClassified(verdict)) {
 
 ---
 
-Software has been deterministic by convention — every fork in the code is a hand-coded predicate, every route a rule someone wrote down. The interesting decisions often resist enumeration: *is this email a complaint?* *is this PR safe to auto-merge?* *is this user's intent to reorder or cancel?* domovoi treats AI as an **embedded worker** for exactly that class of fork — a primitive you sprinkle through ordinary code at the points where rules don't fit. Each module stays deterministic; the glue between them becomes runtime-decided, typed, and budgeted. *Living software*, in the precise sense — bounded structural non-determinism, not unbounded autonomy.
-
 The existing toolkit doesn't fit the job. Free-form LLM generation forces you to parse and pray. Strict structured output collapses uncertainty into argmax — no signal when the model is unsure or the input falls outside your decision space. Agent frameworks (LangGraph, LangChain) treat AI as an autonomous orchestrator and demand you adopt a framework. Workflow engines (Temporal, Inngest) treat AI as a service *they* call, not a primitive *you* call. domovoi is the missing piece: a library-shaped primitive for AI dispatch at the forks where rules don't fit. Ergonomic as a method call. Typed as a discriminated union. Observable as a Verdict trace.
 
 |                              | domovoi                              | LangGraph             | Temporal / Inngest      | Vanilla LLM SDK    |

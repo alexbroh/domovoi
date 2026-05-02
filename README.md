@@ -9,34 +9,57 @@
 ```ts
 import { domovoi, isClassified } from "domovoi";
 
-const query = "best running shoes for marathons";
-const verdict = await domovoi.classify(query, ["commercial", "informational", "navigational"] as const);
+const merchant = "NETFLIX.COM";
+const verdict = await domovoi.classify(
+  merchant,
+  ["shopping", "groceries", "dining", "transportation", "subscriptions"],
+);
 
 if (isClassified(verdict)) {
-  verdict.value;        // → "commercial"
-  verdict.probability;  // → 0.94
+  verdict.value;        // → "subscriptions"
+  verdict.probability;  // → 1.00
 }
 ```
 
-**That's it.** The space you pass narrows the output type. No generics to write, no namespace import to remember.
+**That's it.**
 
-Run the same classifier across a range of search queries:
+Other places this shape shows up in product code:
+
+**Bank transaction categorization**
 
 ```
-"best running shoes for marathons"     →  commercial     (p=0.94)
-"what time is it in tokyo"             →  informational  (p=0.97)
-"facebook login"                       →  navigational   (p=0.99)
-"how to clean white sneakers"          →  informational  (p=0.91)
-"running"                              →  uncertain      (commercial vs informational, p=0.55)
+"NETFLIX.COM"                       →  subscriptions   (p=1.00)
+"WHOLE FOODS MARKET #10293"         →  groceries       (p=0.99)
+"UBER EATS"                         →  dining          (p=0.99)
+"SHELL OIL 12345"                   →  transportation  (p=0.93)
+"AMZN MKTP US*A12B3C4D5"            →  uncertain       (shopping vs groceries, p=0.55)
 ```
 
-The last row is the interesting one. A bare "running" could be any of three intents — buying gear, learning technique, or opening the Running app. The model can't tell which, so you get an `Uncertain` Verdict with both top candidates named. Your search router decides what to do with it.
+**Email categorization**
+
+```
+"Your order has shipped — Order #4821"    →  shipping       (p=0.99)
+"30% off all items today only!"           →  promotional    (p=0.99)
+"Re: project update — please review"      →  work           (p=0.91)
+"Mom's birthday dinner next Saturday"     →  personal       (p=0.97)
+"Re: meeting tomorrow at 2pm"             →  uncertain      (work vs personal, p=0.45)
+```
+
+**Code review comment tone**
+
+```
+"LGTM, ship it."                                              →  approving     (p=0.99)
+"This must be fixed before merge — security issue."           →  blocking      (p=0.97)
+"Could be cleaner if you extract this validation."            →  suggesting    (p=0.94)
+"Why this approach over a Map?"                               →  questioning   (p=0.93)
+"Consider whether this should be a no-op or throw on null."   →  uncertain     (suggesting vs questioning, p=0.55)
+```
 
 > Today's release ships the Verdict primitive: typed classification with calibrated probability, plus structured failure modes for the cases the model can't handle. The next release adds `domovoi.scope` — ambient budget enforcement and cancellation across embedded calls. The [Roadmap](#roadmap) has the rest.
 
 ---
 
-The existing tools don't quite fit. Free-form generation makes you parse and pray. Strict structured output picks an argmax and gives you no signal when the model is unsure. Agent frameworks like LangGraph treat AI as an autonomous orchestrator and ask you to adopt a framework. Workflow engines like Temporal treat AI as a remote service to call, not a primitive to embed. domovoi fills the gap: a library you import and call inline, with calibrated probability built in and the model's uncertainty surfaced as a typed result.
+## How it compares
 
 |                              | domovoi                              | LangGraph             | Temporal / Inngest      | Vanilla LLM SDK    |
 | ---------------------------- | ------------------------------------ | --------------------- | ----------------------- | ------------------ |
@@ -104,7 +127,7 @@ import { domovoi, match } from "domovoi";
 async function routeTicket(ticket: Ticket) {
   const intent = await domovoi.classify(
     ticket.body,
-    ["refund", "complaint", "question"] as const,
+    ["refund", "complaint", "question"],
     { question: "What is this customer asking for?" },
   );
   return match(intent, {
@@ -185,7 +208,7 @@ match(verdict, {
 ```ts
 const articleClassifier = domovoi.classifier({
   name: "articles",
-  space: ["news", "sports", "music"] as const,
+  space: ["news", "sports", "music"],
   question: "Which category fits this article?",
   format: (article: Article) => `${article.title}\n\n${article.body}`,
   thresholds: { high: 0.7, coverageMin: 0.5 },

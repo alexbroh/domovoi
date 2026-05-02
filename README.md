@@ -124,11 +124,11 @@ const fragment = await domovoi.classify(
 
 await match(fragment, {
   classified: ({ value }) =>
-    emit(line, value),
+    record(line, value),
   uncertain:  ({ top, runnerUp }) =>
-    emit(line, top, { lowConfidence: runnerUp }),
+    record(line, top, { lowConfidence: runnerUp }),
   unknown: () =>
-    emit(line, "body"),
+    record(line, "body"),
 });
 ```
 

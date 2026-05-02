@@ -9,14 +9,28 @@
 ```ts
 import { domovoi, isClassified } from "domovoi";
 
-const verdict = await domovoi.classify(input, ["news", "sports", "music"] as const);
+const review = "I love this product, it has changed my life for the better.";
+const verdict = await domovoi.classify(review, ["positive", "neutral", "negative"] as const);
+
 if (isClassified(verdict)) {
-  verdict.value;        // ← autocompletes "news" | "sports" | "music"
-  verdict.probability;  // ← number ∈ [0, 1]
+  verdict.value;        // → "positive"
+  verdict.probability;  // → 1.0
 }
 ```
 
 **That's it.** The space you pass narrows the output type. No generics to write, no namespace import to remember.
+
+Run the same classifier against a few more reviews and you get this — verified output from `gpt-4o-mini`, taken straight from the smoke test in `examples/sentiment.ts`:
+
+```
+"I love this product, it has changed my life for the better."   →  positive (p=1.000)
+"It's fine, does what it says on the tin."                      →  positive (p=0.963)
+"Absolute garbage. Do not buy."                                 →  negative (p=1.000)
+"Hard to tell — works one day, broken the next."                →  neutral  (p=0.622)
+"The new keyboard layout took me a while but I really like it." →  positive (p=1.000)
+```
+
+The fourth review is the interesting one. It's genuinely ambiguous, and the model says so — `p=0.622` is well above the noise floor but well below the threshold you'd want for an automated decision. That moderate-confidence state is what `Uncertain` exists to surface.
 
 > Today's release ships the Verdict primitive: typed classification with calibrated probability, plus structured failure modes for the cases the model can't handle. The next release adds `domovoi.scope` — ambient budget enforcement and cancellation across embedded calls. The [Roadmap](#roadmap) has the rest.
 

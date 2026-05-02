@@ -56,7 +56,7 @@ async function processTransaction(txn: Transaction): Promise<void> {
   await match(verdict, {
     classified: ({ value })         => budget.attribute(account, txn, value),
     uncertain:  ({ top, runnerUp }) => budget.attributePending(account, txn, top, runnerUp),
-    unknown:    ({ reason })        => retryQueue.schedule(txn, { reason, delayMs: 5 * 60_000 }),
+    unknown:    ({ reason })        => transactions.markUncategorized(txn, reason),
   });
 
   await receipts.archive(txn);

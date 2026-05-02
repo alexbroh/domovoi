@@ -77,7 +77,7 @@ OPENAI_API_KEY=sk-...
 
 ---
 
-## What this replaces
+## The Pattern It Replaces
 
 The same pattern appears across mainstream libraries: [Mozilla Readability](https://github.com/mozilla/readability) and [Mercury Parser](https://github.com/postlight/parser) for article extraction (DOM node classification), [GitHub Linguist](https://github.com/github-linguist/linguist) for language detection, and [email-reply-parser](https://github.com/crisp-oss/email-reply-parser/blob/master/lib/regex.ts) and [Talon](https://github.com/mailgun/talon) for email fragment parsing. Each relies on dense stacks of regex and heuristics that grow in complexity without ever fully solving the problem. Here's a paraphrased example from email-reply-parser:
 

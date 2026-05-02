@@ -1,20 +1,24 @@
 /**
- * Example: motivating use case — video canonicalization.
+ * Cross-platform video canonicalization — the motivating use case.
  *
- * Heterogeneous videos from YouTube / Vimeo / Dailymotion / TikTok use
- * different category taxonomies. Canonicalize them under one shared space.
+ * Heterogeneous video sources (YouTube / Vimeo / Dailymotion / TikTok) use
+ * different category taxonomies that don't align. A unified product (a
+ * media library, a recommendation feed, an analytics pipeline) needs all
+ * of them mapped onto one canonical category space.
  *
- * Run:
+ * Rules-based mapping is brittle — every platform reorganizes its taxonomy
+ * periodically, and the mapping decisions involve genuine ambiguity. AI
+ * dispatch handles it: the classifier reads platform metadata + content
+ * fields and emits a typed Verdict over the canonical space.
+ *
+ * Demonstrates: typed input via the `format` callback, multi-class space
+ * with margin rule, provider chain (cheap primary → strong fallback on
+ * uncertainty), and `match` over Verdict variants for routing.
+ *
  *   OPENAI_API_KEY=sk-... tsx examples/video-canonicalization.ts
- *
- * Demonstrates:
- *   - Typed input (`Video`-shaped record) with `format` callback
- *   - Multi-class space with margin rule
- *   - Provider chain with fallback (gpt-4o-mini → gpt-4o)
- *   - Outcome routing per Verdict variant
  */
 
-import { domovoi, isClassified, isUncertain, isUnknown } from "../src/index.js";
+import { domovoi, match } from "../src/index.js";
 import { openai } from "../src/providers/index.js";
 
 type Video = {
@@ -34,12 +38,14 @@ const CANONICAL_CATEGORIES = [
   "lifestyle",
 ] as const;
 
-const VIDEOS: readonly Video[] = [
+type CanonicalCategory = (typeof CANONICAL_CATEGORIES)[number];
+
+const videosToCanonicalize: readonly Video[] = [
   {
     platform: "youtube",
     platformCategory: "Howto & Style",
     title: "How to make sourdough at home",
-    description: "From starter to bread, beginner-friendly walkthrough.",
+    description: "From starter to finished loaf, beginner-friendly walkthrough.",
   },
   {
     platform: "vimeo",
@@ -57,7 +63,7 @@ const VIDEOS: readonly Video[] = [
     platform: "tiktok",
     platformCategory: "(unknown)",
     title: "live concert clip",
-    description: "Frontman crowd-surfing during the final song.",
+    description: "Frontman crowd-surfing during the final song of the encore.",
   },
   {
     platform: "youtube",
@@ -67,57 +73,50 @@ const VIDEOS: readonly Video[] = [
   },
 ];
 
-async function main(): Promise<void> {
-  const canonicalize = domovoi.classifier<(typeof CANONICAL_CATEGORIES)[number], Video>({
-    name: "videos",
-    space: CANONICAL_CATEGORIES,
-    question: "Pick the single canonical category that best fits this video.",
-    format: (v: Video): string =>
-      `Platform: ${v.platform}\nPlatform-native category: ${v.platformCategory}\nTitle: ${v.title}\nDescription: ${v.description}`,
-    thresholds: { high: 0.6, margin: 0.15, coverageMin: 0.5 },
-    providers: [openai("gpt-4o-mini"), openai("gpt-4o")],
-  });
+const canonicalizeVideo = domovoi.classifier<CanonicalCategory, Video>({
+  name: "video_canonicalization",
+  space: CANONICAL_CATEGORIES,
+  question: "Pick the single canonical category that best fits this video.",
+  format: (video) =>
+    [
+      `Platform: ${video.platform}`,
+      `Platform-native category: ${video.platformCategory}`,
+      `Title: ${video.title}`,
+      `Description: ${video.description}`,
+    ].join("\n"),
+  thresholds: { high: 0.6, margin: 0.15, coverageMin: 0.5 },
+  providers: [openai("gpt-4o-mini"), openai("gpt-4o")],
+});
 
-  console.log("=".repeat(60));
-  console.log("Video canonicalization across heterogeneous platforms");
-  console.log("=".repeat(60));
+const UNKNOWN_REASON_DESCRIPTIONS = {
+  out_of_distribution: "input doesn't fit any canonical category — propose a new one",
+  chain_exhausted: "every model in the chain returned Uncertain — defer to human",
+  provider_failure: "every model errored — operational problem, retry later",
+  predicate_rejected: "post-hoc validity check failed",
+  budget_exhausted: "exceeded budget mid-call",
+  cancelled: "request was cancelled",
+} as const;
 
-  for (const video of VIDEOS) {
-    const verdict = await canonicalize(video);
-    console.log(`\n  [${video.platform}/${video.platformCategory}] "${video.title.slice(0, 50)}"`);
+async function canonicalizeBatch(): Promise<void> {
+  console.log(`Canonicalizing videos across platforms\n${"=".repeat(60)}`);
 
-    if (isClassified(verdict)) {
-      console.log(
-        `  → ${verdict.value} (p=${verdict.probability.toFixed(3)}, via ${verdict.meta.providerUsed})`,
-      );
-    } else if (isUncertain(verdict)) {
-      console.log(
-        `  → uncertain: ${verdict.top} vs ${verdict.runnerUp} ` +
-          `(top p=${verdict.probability.toFixed(3)}, via ${verdict.meta.providerUsed})`,
-      );
-    } else if (isUnknown(verdict)) {
-      switch (verdict.reason.type) {
-        case "out_of_distribution":
-          console.log(
-            `  → unknown (out_of_distribution, would-pick=${verdict.reason.topIfRenormalized})`,
-          );
-          break;
-        case "chain_exhausted":
-          console.log(
-            `  → unknown (chain_exhausted across ${verdict.reason.providersAttempted} providers)`,
-          );
-          break;
-        case "provider_failure":
-          console.log(`  → unknown (provider_failure: ${verdict.reason.errors.length} errors)`);
-          break;
-        default:
-          console.log(`  → unknown (${verdict.reason.type})`);
-      }
-    }
+  for (const video of videosToCanonicalize) {
+    const verdict = await canonicalizeVideo(video);
+
+    const summary = match(verdict, {
+      classified: ({ value, probability, meta }) =>
+        `${value} (p=${probability.toFixed(2)}, via ${meta.providerUsed})`,
+      uncertain: ({ top, runnerUp, probability, meta }) =>
+        `uncertain: ${top} vs ${runnerUp} (top p=${probability.toFixed(2)}, via ${meta.providerUsed})`,
+      unknown: ({ reason }) => `unknown — ${UNKNOWN_REASON_DESCRIPTIONS[reason.type]}`,
+    });
+
+    console.log(`\n[${video.platform} / ${video.platformCategory}] "${video.title}"`);
+    console.log(`  → ${summary}`);
   }
 }
 
-main().catch((err) => {
-  console.error("Example failed:", err);
+canonicalizeBatch().catch((error) => {
+  console.error("Canonicalization failed:", error);
   process.exit(1);
 });

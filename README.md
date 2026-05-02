@@ -45,14 +45,14 @@ Other places this shape shows up in product code:
 "Re: meeting tomorrow at 2pm"             →  uncertain      (work vs personal, p=0.45)
 ```
 
-**Code review comment tone**
+**Issue triage**
 
 ```
-"LGTM, ship it."                                              →  approving     (p=0.99)
-"This must be fixed before merge — security issue."           →  blocking      (p=0.97)
-"Could be cleaner if you extract this validation."            →  suggesting    (p=0.94)
-"Why this approach over a Map?"                               →  questioning   (p=0.93)
-"Consider whether this should be a no-op or throw on null."   →  uncertain     (suggesting vs questioning, p=0.55)
+"App crashes on startup after upgrading to v4.2 on macOS"           →  bug        (p=0.96)
+"Add support for OAuth providers beyond Google"                     →  feature    (p=0.94)
+"How do I configure the cache TTL?"                                 →  question   (p=0.91)
+"Typo in README: occured → occurred"                                →  docs       (p=0.99)
+"Slow with many items, would be nice if pagination was smarter"     →  uncertain  (bug vs feature, p=0.55)
 ```
 
 > Today's release ships the Verdict primitive: typed classification with calibrated probability, plus structured failure modes for the cases the model can't handle. The next release adds `domovoi.scope` — ambient budget enforcement and cancellation across embedded calls. The [Roadmap](#roadmap) has the rest.

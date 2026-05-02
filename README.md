@@ -44,25 +44,57 @@ The `Verdict` is the core idea. Not a string, not a confidence score — one of 
 ```tsx
 import { domovoi, match } from "@hourslabs/domovoi";
 
-async function processTransaction(txn: Transaction): Promise<void> {
-  if (await fraud.isSuspicious(txn)) return holds.queue(txn);
+async function processTransaction(transaction: Transaction): Promise<void> {
+  if (await fraud.isSuspicious(transaction)) return holds.queue(transaction);
 
-  const account = await accounts.get(txn.accountId);
+  const account = await accounts.get(transaction.accountId);
   const verdict = await domovoi.classify(
-    txn.merchant,              // e.g. "NETFLIX.COM"
+    transaction.merchant,      // e.g. "NETFLIX.COM"
     account.budget.categories, // e.g. ["shopping", "groceries", ...]
   );
 
   await match(verdict, {
-    classified: ({ value })         => budget.attribute(account, txn, value),
-    uncertain:  ({ top, runnerUp }) => budget.attributePending(account, txn, top, runnerUp),
-    unknown:    ({ reason })        => transactions.markUncategorized(txn, reason),
+    classified: ({ value })         => budget.attribute(account, transaction, value),
+    uncertain:  ({ top, runnerUp }) => budget.attributePending(account, transaction, top, runnerUp),
+    unknown:    ({ reason })        => transactions.markUncategorized(transaction, reason),
   });
 
-  await receipts.archive(txn);
-  events.emit("txn.processed", txn.id);
+  await receipts.archive(transaction);
+  events.emit("transaction.processed", transaction.id);
 }
 ```
+
+---
+
+## vs. rules
+
+The same merchant categorization, written two ways:
+
+**Without domovoi — a regex pile:**
+
+```ts
+function categorize(merchant: string): string {
+  if (/^(NETFLIX|SPOTIFY|HULU|DISNEY\+)/i.test(merchant)) return "subscriptions";
+  if (/^(WHOLE FOODS|TRADER JOE|KROGER|SAFEWAY)/i.test(merchant)) return "groceries";
+  if (/^(SHELL|EXXON|CHEVRON|BP)/i.test(merchant)) return "transportation";
+  if (/^(UBER EATS|GRUBHUB|DOORDASH)/i.test(merchant)) return "dining";
+  if (/^(AMZN|AMAZON)/i.test(merchant)) return "shopping";  // wrong half the time
+  // ... 50+ rules later, "uncategorized" is still the most common bucket
+  return "uncategorized";
+}
+```
+
+**With domovoi — typed Verdicts:**
+
+```ts
+const verdict = await domovoi.classify(merchant, account.budget.categories);
+
+if (isClassified(verdict)) return verdict.value;
+if (isUncertain(verdict)) return verdict.top;       // with low-confidence flag
+return "uncategorized";                             // Unknown — surface reason
+```
+
+The first version grows linearly with merchant variety and silently misclassifies edge cases (`AMZN MKTP` could be groceries, shopping, or subscriptions depending on the cart). The second handles unfamiliar inputs as `Uncertain` instead of forcing a wrong guess, and stops growing when the model already covers them.
 
 ---
 

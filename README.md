@@ -101,7 +101,7 @@ The `AMZN MKTP` row shows why the third state exists: it could be shopping or gr
 
 ## Where Heuristics Break Down
 
-Use this pattern for decisions that are obvious to a person, hard to encode in rules, and safe to get wrong within bounds.
+Use domovoi for decisions that are obvious to a person, hard to encode in rules, and safe to get wrong within bounds.
 
 - **Intent routing** — refund, complaint, or question. Rule sets and regex won't cover the full input space.
 - **Content classification** — tag an article, ticket, or submission against your taxonomy. Replace brittle keyword rules with a classifier that handles edge cases.

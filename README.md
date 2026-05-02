@@ -4,7 +4,7 @@
 
 # domovoi
 
-> **domovoi is an embedded intelligence-in-the-runtime — a primitive that lives inside your software.** Ask questions at the forks where rules don't fit; receive typed Verdicts; ship to production with bounded cost and full observability.
+**domovoi is an embedded intelligence-in-the-runtime — a primitive that lives inside your software.** Ask questions at the forks where rules don't fit; receive typed Verdicts; ship to production with bounded cost and full observability.
 
 ```ts
 import { domovoi, isClassified } from "domovoi";
@@ -16,13 +16,13 @@ if (isClassified(verdict)) {
 }
 ```
 
-**That's it.** The decision space narrows the output type — no user-written generics, no `import * as`, one line of code.
+**That's it.** The space you pass narrows the output type. No generics to write, no namespace import to remember.
 
-> **Today:** the Verdict primitive — typed-uncertainty classification with calibrated probability and structured failure modes. **Coming next:** ambient context propagation — `domovoi.scope` for budget, trace, and cancellation across embedded calls. See the [Roadmap](#roadmap) for what's planned.
+> Today's release ships the Verdict primitive: typed classification with calibrated probability, plus structured failure modes for the cases the model can't handle. The next release adds `domovoi.scope` — ambient budget enforcement and cancellation across embedded calls. The [Roadmap](#roadmap) has the rest.
 
 ---
 
-The existing toolkit doesn't fit the job. Free-form LLM generation forces you to parse and pray. Strict structured output collapses uncertainty into argmax — no signal when the model is unsure or the input falls outside your decision space. Agent frameworks (LangGraph, LangChain) treat AI as an autonomous orchestrator and demand you adopt a framework. Workflow engines (Temporal, Inngest) treat AI as a service *they* call, not a primitive *you* call. domovoi is the missing piece: a library-shaped primitive for AI dispatch at the forks where rules don't fit, ergonomic as a method call, typed as a discriminated union, and observable as a Verdict trace.
+The existing tools don't quite fit. Free-form generation makes you parse and pray. Strict structured output picks an argmax and gives you no signal when the model is unsure. Agent frameworks like LangGraph treat AI as an autonomous orchestrator and ask you to adopt a framework. Workflow engines like Temporal treat AI as a remote service to call, not a primitive to embed. domovoi fills the gap: a library you import and call inline, with calibrated probability built in and the model's uncertainty surfaced as a typed result.
 
 |                              | domovoi                              | LangGraph             | Temporal / Inngest      | Vanilla LLM SDK    |
 | ---------------------------- | ------------------------------------ | --------------------- | ----------------------- | ------------------ |
@@ -45,7 +45,7 @@ The existing toolkit doesn't fit the job. Free-form LLM generation forces you to
 
 ## Why "domovoi"
 
-In Slavic folklore, a *domovoi* (домово́й — "of the house") is a household guardian spirit, bound to the dwelling, inherited with the property, and performing ongoing protective service for whoever lives there next. It is not a tool you summon from outside, nor an autonomous agent with its own agenda — it is a spirit that *lives inside* the home, watching over the cases the household brings it and rendering verdicts. **Bind a domovoi to your codebase. Receive Verdicts. Ship.**
+In Slavic folklore, a *domovoi* (домово́й — "of the house") is a household guardian spirit. It belongs to the house, gets inherited with the property, and looks after whoever lives there. You don't summon it from outside, and it doesn't go off and do its own thing. It stays in the home, sees what comes through the door, and gives its verdict. **Bind a domovoi to your codebase. Receive Verdicts. Ship.**
 
 ## Where this fits
 
@@ -59,7 +59,7 @@ A domovoi belongs at the forks where you'd otherwise write a brittle regex pile,
 - **Fuzzy validation beyond regex** — *"does this product description actually describe this product?"* The check that's trivial for a human and impossible for a regex.
 - **PR / code-review gating** — *"is this PR safe to auto-merge?"* `Classified { value: "yes", probability: 0.91 }` auto-merges; `Uncertain` requests human review with the runner-up carried in the Verdict.
 
-The pattern in every case: *the fork is hard for code and easy for a human; the cost of being wrong is bounded; you want a typed verdict you can dispatch on, not a free-form string you have to parse.* These are the cases domovois exist to handle.
+The same shape repeats: a decision that's easy for a human but hard to write rules for, with a bounded downside if you get it wrong. You want a typed verdict you can dispatch on, not a string you have to parse.
 
 ## Before / after
 
@@ -101,7 +101,7 @@ async function routeTicket(ticket: Ticket) {
 }
 ```
 
-The regex pile becomes a typed three-class space. The "I want my money back, this is broken" ambiguity becomes an `Uncertain` Verdict with `top: "complaint"` and `runnerUp: "refund"` — your human review queue gets it with both candidates already named. The triage path narrows from "everything we couldn't match" to "the LLM provider failed, we don't know what to do," which is what triage should actually mean.
+The regex pile collapses into a three-class typed space. The "I want my money back, this is broken" case lands as `Uncertain` with `top: "complaint"` and `runnerUp: "refund"`, so the review queue already knows both candidates before a human looks at the ticket. And triage stops being the bucket for "anything we couldn't match" and becomes the bucket for "the model failed, we genuinely don't know."
 
 ---
 
@@ -117,11 +117,11 @@ domovoi treats classification as a **probabilistic decision over a finite space*
 - **`Uncertain<T>`** — top class below threshold; carries `top`, `runnerUp`, full `distribution`.
 - **`Unknown<T>`** — no answer; reason discriminates `out_of_distribution` / `chain_exhausted` / `provider_failure` / `predicate_rejected` / `budget_exhausted` / `cancelled`.
 
-Failure-to-classify is a *first-class typed result*, not a thrown exception.
+Failure-to-classify is a typed result, not an exception you have to catch.
 
 ## Design principle — small core + clear extension points
 
-The design discipline is small core plus clear extension points: an opinionated public API kept deliberately minimal, and a small set of published interfaces — `Provider`, `Calibrator`, `Cache` — that let users build their own adapters, calibrators, and caches without forking the library.
+domovoi keeps the public API deliberately small. The three extension interfaces — `Provider`, `Calibrator`, `Cache` — are public so you can write your own adapters, calibrators, and caches in your own code, without forking the library.
 
 **Core verbs:**
 - `domovoi.classify(input, space)` — multi-class one-shot
@@ -234,7 +234,7 @@ Three public interfaces for backends domovoi doesn't ship: `Provider` (any LLM A
 
 ## Roadmap
 
-Ordered milestones — *what*, not *when*. Scope and order are committed; specific dates and version numbers are not. Find version numbers on the npm package page and in GitHub Releases.
+Ordered milestones below. The order is committed, the calendar isn't, and specific version numbers live on the npm package page and in GitHub Releases.
 
 **Today.** The Verdict primitive: discriminated `Classified<T>` / `Uncertain<T>` / `Unknown<T>` with structured failure modes; `classify` / `boolean` / `classifier` verbs; calibration infrastructure; pluggable provider chain; tokenizer-aware OpenAI adapter; `Provider` / `Calibrator` / `Cache` extension points.
 

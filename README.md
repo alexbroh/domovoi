@@ -77,7 +77,36 @@ OPENAI_API_KEY=sk-...
 
 ---
 
-## The Pattern It Replaces
+## Typed Verdicts
+
+domovoi treats classification as a probabilistic decision over a finite space and returns one of three typed variants:
+
+- **`Classified<T>`** — confident answer with `value: T` and calibrated `probability`.
+- **`Uncertain<T>`** — top class below threshold; carries `top`, `runnerUp`, and the full `distribution`.
+- **`Unknown<T>`** — no answer; `reason` discriminates `out_of_distribution`, `chain_exhausted`, `provider_failure`, `predicate_rejected`, `budget_exhausted`, or `cancelled`.
+
+Failure-to-classify is a typed result, not an exception. Dispatch is exhaustive at the type level.
+
+```
+"NETFLIX.COM"                   →  subscriptions   (p=1.00)
+"WHOLE FOODS MARKET #10293"     →  groceries       (p=0.99)
+"UBER EATS"                     →  dining          (p=0.99)
+"SHELL OIL 12345"               →  transportation  (p=0.93)
+"AMZN MKTP US*A12B3C4D5"        →  uncertain       (shopping vs groceries, p=0.55)
+```
+
+The `AMZN MKTP` row shows why the third state exists: it could be shopping or groceries depending on the cart. A forced `argmax` would silently pick the wrong one. domovoi surfaces the ambiguity as a first-class result instead.
+
+---
+
+## When to Use It
+
+The pattern that fits: *a decision that's obvious to a person but impossible to write rules for, with a bounded downside when you get it wrong.*
+
+- **Intent routing** — refund, complaint, or question. Rules and regex can't cover the full input space.
+- **Content classification** — tag an article, ticket, or submission against your taxonomy. Replace brittle keyword rules with a classifier that handles edge cases.
+- **Tiered dispatch** — chain `[gpt-4o-mini, gpt-5]`. The cheap model handles the easy cases; the expensive one runs only on `Uncertain`. Cost savings are meaningful when ≥70–80% of calls resolve at the cheaper tier.
+- **Free-form validation + privacy filters** — does this description match the product? Does this profile bio violate guidelines? Does this user input contain PII or a prompt-injection attempt?
 
 The same pattern appears across mainstream libraries: [Mozilla Readability](https://github.com/mozilla/readability) and [Mercury Parser](https://github.com/postlight/parser) for article extraction (DOM node classification), [GitHub Linguist](https://github.com/github-linguist/linguist) for language detection, and [email-reply-parser](https://github.com/crisp-oss/email-reply-parser/blob/master/lib/regex.ts) and [Talon](https://github.com/mailgun/talon) for email fragment parsing. Each relies on dense stacks of regex and heuristics that grow in complexity without ever fully solving the problem. Here's a paraphrased example from email-reply-parser:
 
@@ -135,39 +164,6 @@ await match(fragment, {
 </td>
 </tr>
 </table>
-
----
-
-## Typed Verdicts
-
-domovoi treats classification as a probabilistic decision over a finite space and returns one of three typed variants:
-
-- **`Classified<T>`** — confident answer with `value: T` and calibrated `probability`.
-- **`Uncertain<T>`** — top class below threshold; carries `top`, `runnerUp`, and the full `distribution`.
-- **`Unknown<T>`** — no answer; `reason` discriminates `out_of_distribution`, `chain_exhausted`, `provider_failure`, `predicate_rejected`, `budget_exhausted`, or `cancelled`.
-
-Failure-to-classify is a typed result, not an exception. Dispatch is exhaustive at the type level.
-
-```
-"NETFLIX.COM"                   →  subscriptions   (p=1.00)
-"WHOLE FOODS MARKET #10293"     →  groceries       (p=0.99)
-"UBER EATS"                     →  dining          (p=0.99)
-"SHELL OIL 12345"               →  transportation  (p=0.93)
-"AMZN MKTP US*A12B3C4D5"        →  uncertain       (shopping vs groceries, p=0.55)
-```
-
-The `AMZN MKTP` row shows why the third state exists: it could be shopping or groceries depending on the cart. A forced `argmax` would silently pick the wrong one. domovoi surfaces the ambiguity as a first-class result instead.
-
----
-
-## When to Use It
-
-The pattern that fits: *a decision that's obvious to a person but impossible to write rules for, with a bounded downside when you get it wrong.*
-
-- **Intent routing** — refund, complaint, or question. Rules and regex can't cover the full input space.
-- **Content classification** — tag an article, ticket, or submission against your taxonomy. Replace brittle keyword rules with a classifier that handles edge cases.
-- **Tiered dispatch** — chain `[gpt-4o-mini, gpt-5]`. The cheap model handles the easy cases; the expensive one runs only on `Uncertain`. Cost savings are meaningful when ≥70–80% of calls resolve at the cheaper tier.
-- **Free-form validation + privacy filters** — does this description match the product? Does this profile bio violate guidelines? Does this user input contain PII or a prompt-injection attempt?
 
 ---
 

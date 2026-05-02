@@ -99,16 +99,18 @@ The `AMZN MKTP` row shows why the third state exists: it could be shopping or gr
 
 ---
 
-## When to Use It
+## Where Heuristics Break Down
 
-The pattern that fits: *a decision that's obvious to a person but impossible to write rules for, with a bounded downside when you get it wrong.*
+Use this pattern for decisions that are obvious to a person, hard to encode in rules, and safe to get wrong within bounds.
 
-- **Intent routing** — refund, complaint, or question. Rules and regex can't cover the full input space.
+- **Intent routing** — refund, complaint, or question. Rule sets and regex won't cover the full input space.
 - **Content classification** — tag an article, ticket, or submission against your taxonomy. Replace brittle keyword rules with a classifier that handles edge cases.
-- **Tiered dispatch** — chain `[gpt-4o-mini, gpt-5]`. The cheap model handles the easy cases; the expensive one runs only on `Uncertain`. Cost savings are meaningful when ≥70–80% of calls resolve at the cheaper tier.
-- **Free-form validation + privacy filters** — does this description match the product? Does this profile bio violate guidelines? Does this user input contain PII or a prompt-injection attempt?
+- **Tiered dispatch** — chain models (e.g., cheap → expensive). The cheaper model handles easy cases; the stronger model runs only on `Uncertain`. Costs drop meaningfully when ~70–80% resolve at the lower tier.
+- **Free-form validation + privacy filters** — does this description match the product? Does this bio violate guidelines? Does this input contain PII or a prompt-injection attempt?
 
-The same pattern appears across mainstream libraries: [Mozilla Readability](https://github.com/mozilla/readability) and [Mercury Parser](https://github.com/postlight/parser) for article extraction (DOM node classification), [GitHub Linguist](https://github.com/github-linguist/linguist) for language detection, and [email-reply-parser](https://github.com/crisp-oss/email-reply-parser/blob/master/lib/regex.ts) and [Talon](https://github.com/mailgun/talon) for email fragment parsing. Each relies on dense stacks of regex and heuristics that grow in complexity without ever fully solving the problem. Here's a paraphrased example from email-reply-parser:
+This same shape shows up across mainstream libraries: [Mozilla Readability](https://github.com/mozilla/readability) and [Mercury Parser](https://github.com/postlight/parser) for DOM-based article extraction, [GitHub Linguist](https://github.com/github-linguist/linguist) for language detection, and [email-reply-parser](https://github.com/crisp-oss/email-reply-parser/blob/master/lib/regex.ts) and [Talon](https://github.com/mailgun/talon) for email fragment parsing. Under the hood, they rely on dense stacks of regex and heuristics that grow in complexity without ever fully solving the problem.
+
+Here's a paraphrased example from email-reply-parser:
 
 <table>
 <tr><th>Before</th><th>With domovoi</th></tr>

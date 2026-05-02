@@ -16,7 +16,7 @@ import { decide, validateClassifierConfig, withDefaults } from "../engine/index.
 import { resolveDefaultProviders } from "../env.js";
 import { defaultTemplate } from "../prompt.js";
 import type { Provider } from "../providers/provider.js";
-import type { Budget, Distribution, Thresholds, UnknownReason, Verdict } from "../types.js";
+import type { Budget, Distribution, Thresholds, UnknownVerdictCause, Verdict } from "../types.js";
 
 type YesNo = "yes" | "no";
 
@@ -45,9 +45,8 @@ export async function boolean(
 
   const calibrator = opts?.calibrator ?? identity;
   const cache = opts?.cache ?? memoryCache();
-  const thresholds = (opts?.thresholds ?? ONE_SHOT_BINARY_THRESHOLDS) as Thresholds<
-    typeof YES_NO_SPACE
-  >;
+  const thresholds: Thresholds<typeof YES_NO_SPACE> =
+    opts?.thresholds ?? ONE_SHOT_BINARY_THRESHOLDS;
 
   validateClassifierConfig({
     space: YES_NO_SPACE,
@@ -88,23 +87,23 @@ function toBooleanVerdict(v: Verdict<YesNo>): Verdict<boolean> {
         distribution: rekey(v.distribution),
       };
     case "unknown":
-      return { ...v, reason: convertUnknownReason(v.reason) };
+      return { ...v, reason: convertCause(v.reason) };
   }
 }
 
-function convertUnknownReason(reason: UnknownReason<YesNo>): UnknownReason<boolean> {
-  switch (reason.type) {
+function convertCause(cause: UnknownVerdictCause<YesNo>): UnknownVerdictCause<boolean> {
+  switch (cause.type) {
     case "out_of_distribution":
-      return { ...reason, topIfRenormalized: reason.topIfRenormalized === "yes" };
+      return { ...cause, topIfRenormalized: cause.topIfRenormalized === "yes" };
     case "chain_exhausted":
-      return { ...reason, lastDistribution: rekey(reason.lastDistribution) };
+      return { ...cause, lastDistribution: rekey(cause.lastDistribution) };
     // Remaining variants don't reference T — payload is structurally identical
-    // between UnknownReason<YesNo> and UnknownReason<boolean>.
+    // between UnknownVerdictCause<YesNo> and UnknownVerdictCause<boolean>.
     case "predicate_rejected":
     case "provider_failure":
     case "budget_exhausted":
     case "cancelled":
-      return reason;
+      return cause;
   }
 }
 

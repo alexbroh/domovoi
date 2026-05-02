@@ -32,7 +32,7 @@ export type {
   Thresholds,
   Uncertain,
   Unknown,
-  UnknownReason,
+  UnknownVerdictCause,
   Verdict,
   VerdictMeta,
 } from "./types.js";

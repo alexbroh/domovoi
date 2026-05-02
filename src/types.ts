@@ -1,53 +1,50 @@
 /**
  * Core types for domovoi: typed-uncertainty classification.
- *
- * Verdict<T> is a discriminated union with three variants:
- *   - Classified<T>: confident result; probability ≥ high threshold.
- *   - Uncertain<T>: top class below threshold; carries top, runnerUp, distribution.
- *   - Unknown<T>:  no result; reason discriminates the failure mode.
  */
 
+/**
+ * Capabilities a Provider declares about its sampling behavior. The engine
+ * uses these to decide how to interpret the returned `Distribution` and
+ * which providers in a chain produce comparable Verdict metadata.
+ */
 export type ProviderCapabilities = {
   readonly distributionSource: "logprobs" | "multi_sample";
   readonly coverageMeasurement: "exact" | "approximate" | "none";
-  /** Max top-K logprobs returned by provider; 0 for multi_sample. */
+  /** Max top-K logprobs returned by the provider; 0 for `multi_sample`. */
   readonly maxTopLogprobs: number;
 };
 
 /**
- * The label-type domain a Verdict can range over. String for multi-class
- * spaces (the dominant case) and boolean for the binary `domovoi.boolean()`
- * verb. The engine and providers internally constrain to `string`; the
- * widening here lets `Verdict<boolean>` exist as a public return type.
+ * The label-type domain a Verdict can range over: string for multi-class
+ * spaces, boolean for the binary `domovoi.boolean()` verb.
  */
 export type Label = string | boolean;
 
+/**
+ * Probability distribution over the labels of a decision space, plus a
+ * coverage signal that measures how much probability mass the model put
+ * on labels outside the space.
+ */
 export type Distribution<T extends Label> = {
   /**
-   * Renormalized probability per label. Missing labels (those whose first-token
-   * fell outside provider's top-K) are assigned 0 by the engine.
-   *
-   * Branches on the label type so callers retain precise typing in both forms:
-   * for string spaces, `probs` is keyed by `T` directly; for boolean spaces,
-   * by `"true" | "false"` (since JS object keys coerce booleans to strings).
+   * Probability per label, renormalized to sum to 1 over the space. Labels
+   * the model didn't express any opinion on are present with value 0.
    */
   readonly probs: [T] extends [string]
     ? { readonly [K in T]: number }
-    : { readonly true: number; readonly false: number };
+    : { readonly [K in `${T & boolean}`]: number };
   /**
-   * Sum of in-space mass before renormalization, ∈ [0, 1].
-   * Lower coverage indicates the model wanted to emit out-of-space tokens.
+   * Pre-renormalization mass on in-space labels, ∈ [0, 1]. Low coverage
+   * means the model wanted to answer with something outside the space.
    */
   readonly coverage: number;
 };
 
 /**
- * Plain-object error shape; JSON-safe. Engine converts thrown Error instances
- * to this shape when recording into Verdict.meta.providerErrors so that
- * `JSON.stringify(verdict)` produces useful output.
- *
- * Live Error instances are still passed to the `onProviderError` hook with
- * full Error semantics (instanceof checks work there).
+ * Plain-object error shape. `Verdict.meta.providerErrors[i].error` carries
+ * this so `JSON.stringify(verdict)` round-trips cleanly. Live `Error`
+ * instances are still passed to the `onProviderError` hook for callers
+ * that need `instanceof` semantics.
  */
 export type SerializableError = {
   readonly name: string;
@@ -57,27 +54,36 @@ export type SerializableError = {
   readonly stack?: string;
 };
 
+/**
+ * Per-Verdict metadata recorded by the engine. Present on every variant —
+ * gives observability into which provider answered, how long it took, and
+ * what failed along the way without separate instrumentation.
+ */
 export type VerdictMeta = {
-  /** "openai/gpt-4o-mini" — same format as DOMOVOI_PROVIDERS env entries. */
+  /** Provider that produced this Verdict, in `factory/model` form. */
   readonly providerUsed: string;
   /** Every provider attempted, in chain order. */
   readonly providersAttempted: readonly string[];
-  /** Errors swallowed during fallback. Empty if no errors. */
+  /** Errors swallowed during fallback. Empty when no errors occurred. */
   readonly providerErrors: ReadonlyArray<{
     readonly providerId: string;
     readonly error: SerializableError;
   }>;
   /** Wall-clock latency from engine entry to this Verdict. */
   readonly latencyMs: number;
-  /** True if the engine resolved this Verdict from cache (no provider call). */
+  /** True when this Verdict was served from cache. */
   readonly cacheHit: boolean;
-  /** Quality of OOD detection from the answering provider's capabilities. */
+  /** OOD-signal quality from the answering provider. */
   readonly coverageQuality: "exact" | "approximate" | "none";
-  /** How the Distribution was constructed by the answering provider. */
+  /** How the answering provider constructed its Distribution. */
   readonly distributionSource: "logprobs" | "multi_sample";
 };
 
-export type UnknownReason<T extends Label> =
+/**
+ * Why a Verdict came back as `Unknown`. Each variant carries the data
+ * relevant to its mode — surface it for routing, alerting, or retry logic.
+ */
+export type UnknownVerdictCause<T extends Label> =
   | {
       readonly type: "out_of_distribution";
       readonly coverage: number;
@@ -107,61 +113,55 @@ export type UnknownReason<T extends Label> =
     };
 
 /**
- * The classifier produced a confident result: `value` is one of the labels
- * in the decision space, with calibrated probability ≥ the `high` threshold.
+ * Confident result. `value` cleared the `high` threshold (and the margin
+ * requirement, if any) over the decision space.
  */
 export type Classified<T extends Label> = {
   readonly kind: "classified";
   readonly value: T;
-  /** Post-calibration probability of `value`, ∈ [0, 1]. */
+  /** Calibrated probability of `value`, ∈ [0, 1]. */
   readonly probability: number;
   readonly meta: VerdictMeta;
 };
 
 /**
- * The classifier identified a top candidate but its probability was below
- * the `high` threshold (or the margin requirement was not met).
+ * Top candidate found, but below the `high` threshold (or the margin
+ * requirement was not met). Carries `runnerUp` so callers can fall back,
+ * confirm with the user, or escalate to a stronger model with both
+ * candidates in scope.
  */
 export type Uncertain<T extends Label> = {
   readonly kind: "uncertain";
   readonly top: T;
-  /** Post-calibration probability of `top`, ∈ [0, 1]. */
+  /** Calibrated probability of `top`, ∈ [0, 1]. */
   readonly probability: number;
   readonly runnerUp: T;
   readonly distribution: Distribution<T>;
   readonly meta: VerdictMeta;
 };
 
-/**
- * No usable classification was produced. Inspect `reason.type` to discriminate
- * out_of_distribution / chain_exhausted / predicate_rejected / provider_failure
- * / budget_exhausted / cancelled.
- */
+/** No usable classification. `reason.type` discriminates the cause. */
 export type Unknown<T extends Label> = {
   readonly kind: "unknown";
-  readonly reason: UnknownReason<T>;
+  readonly reason: UnknownVerdictCause<T>;
   readonly meta: VerdictMeta;
 };
 
 /**
- * Convenience union over the three variants. Pattern-match on `kind` to
- * narrow, or use the type guards (`isClassified`, `isUncertain`, `isUnknown`),
- * or use the `match` helper for exhaustive handling.
+ * The discriminated union returned by every classifier call. Narrow with
+ * `kind`, the type guards (`isClassified` / `isUncertain` / `isUnknown`),
+ * or `match` for exhaustive handling.
  */
 export type Verdict<T extends Label> = Classified<T> | Uncertain<T> | Unknown<T>;
 
-/** Verdict variants that carry a top-class candidate (Classified or Uncertain). */
+/** Verdict variants that carry a top-class candidate. */
 export type Filterable<T extends Label> = Classified<T> | Uncertain<T>;
 
 /**
- * Thresholds discriminated by space length:
- *   - Binary (length 2): requires `high` and `low` (deadband).
- *   - Multi-class: requires `high`, optional `margin`.
- *
- * Value rules enforced at construction:
- *   - All thresholds in [0, 1] inclusive.
- *   - Binary: `high > low` strict.
- *   - `margin >= 0`.
+ * Threshold rules, discriminated by space length. Binary spaces use a
+ * deadband (`high` / `low`); multi-class spaces use a top-confidence rule
+ * with optional margin. Values must lie in `[0, 1]` and binary `high` must
+ * exceed `low` strictly.
  */
 export type Thresholds<Space extends readonly string[]> = Space["length"] extends 2
   ? {
@@ -175,27 +175,25 @@ export type Thresholds<Space extends readonly string[]> = Space["length"] extend
       readonly coverageMin?: number;
     };
 
+/** Caps on time and provider calls. Defaults applied if a field is omitted. */
 export type Budget = {
-  /** Wall-clock per-provider-call timeout. Default 10_000ms. */
+  /** Per-provider-call wall-clock timeout. Default 10_000ms. */
   readonly perCallTimeoutMs?: number;
-  /** Wall-clock across all providers in the chain (incl. future retries). Default 30_000ms. */
+  /** Across-the-chain wall-clock budget. Default 30_000ms. */
   readonly chainTimeoutMs?: number;
-  /** Hard cap on number of provider calls per classification. Default = chain length. */
+  /** Hard cap on provider calls per classification. Default = chain length. */
   readonly maxCalls?: number;
 };
 
+/**
+ * Prompt template applied to every classification call. Override only when
+ * the default doesn't fit; supply your own `templateHash` so cache keys
+ * stay correct.
+ */
 export type PromptTemplate = {
-  /** Optional system prompt; undefined skips the system message. */
   readonly systemPrompt?: string;
-  /**
-   * Renders the user message. {labels_csv} is filled by the engine in
-   * user-given order. Single newline between question and input;
-   * question undefined → just input (no leading newline).
-   */
+  /** Renders the user message. `{labels_csv}` is filled in user-given order. */
   readonly userTemplate: (input: string, space: readonly string[], question?: string) => string;
-  /**
-   * Stable hash for cache-key composition. Library default is
-   * "domovoi/v0-default"; user overrides must supply their own.
-   */
+  /** Stable hash for cache-key composition. */
   readonly templateHash: string;
 };

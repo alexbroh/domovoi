@@ -1,10 +1,11 @@
 /**
- * domovoi.classify(input, space, opts?) — multi-class one-shot.
+ * Multi-class one-shot classifier — returns `Verdict<T>` where `T` is the
+ * literal union of labels in `space`.
  *
- * Demo path. Reads providers from `DOMOVOI_PROVIDERS` env unless the caller
- * supplies `{ providers }`. Default thresholds are illustrative only —
- * `{ high: 0.5, coverageMin: 0.3 }` (S2) — production code should construct
- * a `classifier({ thresholds, ... })` instead.
+ * Reads providers from `DOMOVOI_PROVIDERS` env unless the caller supplies
+ * `{ providers }`. Default thresholds `{ high: 0.5, coverageMin: 0.3 }` are
+ * illustrative — production code should construct `classifier({ ... })`
+ * with thresholds tuned to the workload.
  */
 
 import { type Cache, memoryCache } from "../cache.js";

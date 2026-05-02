@@ -142,7 +142,7 @@ export function validateProviderChain(
 
 /**
  * Validate calibrator vs provider chain capabilities at construction.
- * Multi-sample providers cannot use non-identity calibrators in v0.
+ * Multi-sample providers reject non-identity calibrators.
  */
 export function validateCalibratorCompatibility(
   calibratorIsIdentity: boolean,

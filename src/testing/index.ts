@@ -1,9 +1,9 @@
 /**
- * Public test helpers exposed via `domovoi/testing` subpath.
+ * Public test helpers exposed via `@hours/domovoi/testing` subpath.
  *
- * `mockProvider({ behavior, capabilities?, id? })` builds a Provider for tests
- * without hitting a real LLM. Defaults work out-of-the-box for unit tests
- * of engine logic, threshold semantics, fallback chains, etc. (S10).
+ * `mockProvider({ behavior, capabilities?, id? })` builds a Provider for
+ * tests without hitting a real LLM. Defaults work out-of-the-box for unit
+ * tests of engine logic, threshold semantics, and fallback chains.
  */
 
 import type { Provider, SampleOptions } from "../providers/provider.js";

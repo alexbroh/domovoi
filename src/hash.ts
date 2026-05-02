@@ -1,8 +1,8 @@
 /**
  * Stable canonical hashing for cache keys.
  *
- * - SHA-256 from `node:crypto` (stdlib only; cross-process stable for v1
- *   persistent backends).
+ * - SHA-256 from `node:crypto` (stdlib only; cross-process stable so future
+ *   persistent backends can share keys).
  * - Canonical JSON serialization with lexicographically sorted object keys.
  * - NFC normalization + trim for input string hashing.
  */
@@ -17,7 +17,9 @@ export function sha256(s: string): string {
 /**
  * Canonicalize a JSON-serializable value into a deterministic string:
  * - Object keys sorted lexicographically.
- * - Arrays preserve order (for decision-space ordering in cache keys: K3 — user-given).
+ * - Arrays preserve order — decision-space ordering in cache keys honors
+ *   the user-given order (re-ordering changes the prompt and the model's
+ *   first-token distribution, so it must change the cache key).
  * - undefined values are omitted (matches JSON.stringify semantics for object values).
  *
  * Throws on non-JSON-serializable inputs (functions, symbols, circular refs).

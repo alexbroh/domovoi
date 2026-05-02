@@ -116,4 +116,9 @@ describe("T10 — literal narrowing one-liner (RESEARCH.md Pass 2 SOTA bar)", ()
     const v = c("input");
     expectTypeOf(v).resolves.toEqualTypeOf<Verdict<"yes" | "no">>();
   });
+
+  test("domovoi.boolean(input, question) resolves to Verdict<boolean>", () => {
+    const v = domovoi.boolean("input", "Is this toxic?");
+    expectTypeOf(v).resolves.toEqualTypeOf<Verdict<boolean>>();
+  });
 });

@@ -1,5 +1,5 @@
 /**
- * Public exports from `domovoi/providers` subpath.
+ * Public exports from `@hours/domovoi/providers` subpath.
  */
 
 export {

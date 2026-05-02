@@ -2,9 +2,9 @@
  * domovoi — typed-uncertainty classification for TypeScript.
  *
  * Public API entry point. Subpaths:
- *   - `domovoi/providers` — Provider factories and interface (openai, ollama, openaiCompat).
- *   - `domovoi/calibration` — Calibrator factories (identity, temperatureScaling, plattScaling).
- *   - `domovoi/testing` — mockProvider for unit tests.
+ *   - `@hours/domovoi/providers` — Provider factories and interface (openai, ollama, openaiCompat).
+ *   - `@hours/domovoi/calibration` — Calibrator factories (identity, temperatureScaling, plattScaling).
+ *   - `@hours/domovoi/testing` — mockProvider for unit tests.
  */
 
 import { memoryCache as memoryCacheFactory } from "./cache.js";
@@ -25,13 +25,14 @@ export type {
   Classified,
   Distribution,
   Filterable,
+  Label,
   PromptTemplate,
   ProviderCapabilities,
   SerializableError,
   Thresholds,
   Uncertain,
   Unknown,
-  UnknownReason,
+  UnknownVerdictCause,
   Verdict,
   VerdictMeta,
 } from "./types.js";
@@ -44,7 +45,7 @@ export { filter, isClassified, isUncertain, isUnknown, match } from "./verdict.j
  * Top-level API surface — what users primarily import.
  *
  * @example
- *   import { domovoi, isClassified } from "domovoi";
+ *   import { domovoi, isClassified } from "@hours/domovoi";
  *   const v = await domovoi.classify(input, ["a","b","c"] as const);
  *   if (isClassified(v)) console.log(v.value);
  */

@@ -1,12 +1,12 @@
 /**
- * domovoi.boolean(input, question, opts?) — binary one-shot.
+ * Binary one-shot classifier — returns `Verdict<boolean>`.
  *
- * Returns `Verdict<"yes" | "no">` (R4). Defaults a binary deadband:
- * `{ high: 0.7, low: 0.3, coverageMin: 0.3 }` (S2) — illustrative only.
+ * The engine internally classifies over the string space `["yes", "no"]` to
+ * match LLM first-token tokenization cleanly; a small transform at the verb
+ * boundary maps the result to `boolean` so the public surface is idiomatic.
  *
- * Returns the labels in user-given conventional order for prompts:
- * ["yes", "no"]. Engine uses user-given order for cache key + prompt rendering
- * per K3.
+ * Default deadband `{ high: 0.7, low: 0.3, coverageMin: 0.3 }` is
+ * illustrative — tune for your workload.
  */
 
 import { type Cache, memoryCache } from "../cache.js";
@@ -15,7 +15,7 @@ import { decide, validateClassifierConfig, withDefaults } from "../engine/index.
 import { resolveDefaultProviders } from "../env.js";
 import { defaultTemplate } from "../prompt.js";
 import type { Provider } from "../providers/provider.js";
-import type { Budget, Thresholds, Verdict } from "../types.js";
+import type { Budget, Distribution, Thresholds, UnknownVerdictCause, Verdict } from "../types.js";
 
 type YesNo = "yes" | "no";
 
@@ -36,7 +36,7 @@ export async function boolean(
   input: string,
   question: string,
   opts?: BooleanOptions,
-): Promise<Verdict<YesNo>> {
+): Promise<Verdict<boolean>> {
   const providers =
     opts?.providers !== undefined && opts.providers.length > 0
       ? opts.providers
@@ -44,9 +44,8 @@ export async function boolean(
 
   const calibrator = opts?.calibrator ?? identity;
   const cache = opts?.cache ?? memoryCache();
-  const thresholds = (opts?.thresholds ?? ONE_SHOT_BINARY_THRESHOLDS) as Thresholds<
-    typeof YES_NO_SPACE
-  >;
+  const thresholds: Thresholds<typeof YES_NO_SPACE> =
+    opts?.thresholds ?? ONE_SHOT_BINARY_THRESHOLDS;
 
   validateClassifierConfig({
     space: YES_NO_SPACE,
@@ -66,5 +65,50 @@ export async function boolean(
     ...(opts?.budget !== undefined ? { budget: opts.budget } : {}),
   });
 
-  return decide(input, config, opts?.signal);
+  const verdict = await decide(input, config, opts?.signal);
+  return toBooleanVerdict(verdict);
+}
+
+/**
+ * Map `Verdict<"yes" | "no">` → `Verdict<boolean>`. The engine works on string
+ * labels; this transform is the verb-boundary adapter so the public type is a
+ * plain `boolean`. Distribution keys go from `{ yes, no }` → `{ true, false }`.
+ */
+function toBooleanVerdict(v: Verdict<YesNo>): Verdict<boolean> {
+  switch (v.kind) {
+    case "classified":
+      return { ...v, value: v.value === "yes" };
+    case "uncertain":
+      return {
+        ...v,
+        top: v.top === "yes",
+        runnerUp: v.runnerUp === "yes",
+        distribution: rekey(v.distribution),
+      };
+    case "unknown":
+      return { ...v, reason: convertCause(v.reason) };
+  }
+}
+
+function convertCause(cause: UnknownVerdictCause<YesNo>): UnknownVerdictCause<boolean> {
+  switch (cause.type) {
+    case "out_of_distribution":
+      return { ...cause, topIfRenormalized: cause.topIfRenormalized === "yes" };
+    case "chain_exhausted":
+      return { ...cause, lastDistribution: rekey(cause.lastDistribution) };
+    // Remaining variants don't reference T — payload is structurally identical
+    // between UnknownVerdictCause<YesNo> and UnknownVerdictCause<boolean>.
+    case "predicate_rejected":
+    case "provider_failure":
+    case "budget_exhausted":
+    case "cancelled":
+      return cause;
+  }
+}
+
+function rekey(d: Distribution<YesNo>): Distribution<boolean> {
+  return {
+    probs: { true: d.probs.yes, false: d.probs.no },
+    coverage: d.coverage,
+  };
 }

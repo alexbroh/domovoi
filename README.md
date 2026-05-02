@@ -16,13 +16,13 @@ if (isClassified(verdict)) {
 }
 ```
 
-**That's it.** The decision space narrows the output type. No user-written generics. No `import * as`. One line.
+**That's it.** The decision space narrows the output type — no user-written generics, no `import * as`, one line of code.
 
 > **Today:** the Verdict primitive — typed-uncertainty classification with calibrated probability and structured failure modes. **Coming next:** ambient context propagation — `domovoi.scope` for budget, trace, and cancellation across embedded calls. See the [Roadmap](#roadmap) for what's planned.
 
 ---
 
-The existing toolkit doesn't fit the job. Free-form LLM generation forces you to parse and pray. Strict structured output collapses uncertainty into argmax — no signal when the model is unsure or the input falls outside your decision space. Agent frameworks (LangGraph, LangChain) treat AI as an autonomous orchestrator and demand you adopt a framework. Workflow engines (Temporal, Inngest) treat AI as a service *they* call, not a primitive *you* call. domovoi is the missing piece: a library-shaped primitive for AI dispatch at the forks where rules don't fit. Ergonomic as a method call. Typed as a discriminated union. Observable as a Verdict trace.
+The existing toolkit doesn't fit the job. Free-form LLM generation forces you to parse and pray. Strict structured output collapses uncertainty into argmax — no signal when the model is unsure or the input falls outside your decision space. Agent frameworks (LangGraph, LangChain) treat AI as an autonomous orchestrator and demand you adopt a framework. Workflow engines (Temporal, Inngest) treat AI as a service *they* call, not a primitive *you* call. domovoi is the missing piece: a library-shaped primitive for AI dispatch at the forks where rules don't fit, ergonomic as a method call, typed as a discriminated union, and observable as a Verdict trace.
 
 |                              | domovoi                              | LangGraph             | Temporal / Inngest      | Vanilla LLM SDK    |
 | ---------------------------- | ------------------------------------ | --------------------- | ----------------------- | ------------------ |
@@ -45,7 +45,7 @@ The existing toolkit doesn't fit the job. Free-form LLM generation forces you to
 
 ## Why "domovoi"
 
-In Slavic folklore, a *domovoi* (домово́й — "of the house") is a household guardian spirit. Bound to the dwelling, inherited with the property, performing ongoing protective service for whoever lives there next. Not a tool you summon from outside. Not an autonomous agent with its own agenda. A spirit that *lives inside* the home, watches over the cases the household brings it, and renders verdicts. **Bind a domovoi to your codebase. Receive Verdicts. Ship.**
+In Slavic folklore, a *domovoi* (домово́й — "of the house") is a household guardian spirit, bound to the dwelling, inherited with the property, and performing ongoing protective service for whoever lives there next. It is not a tool you summon from outside, nor an autonomous agent with its own agenda — it is a spirit that *lives inside* the home, watching over the cases the household brings it and rendering verdicts. **Bind a domovoi to your codebase. Receive Verdicts. Ship.**
 
 ## Where this fits
 
@@ -121,7 +121,7 @@ Failure-to-classify is a *first-class typed result*, not a thrown exception.
 
 ## Design principle — small core + clear extension points
 
-domovoi follows the **Zod / Drizzle / Pydantic / AI SDK pattern**: small, opinionated core API plus published extension interfaces — `Provider`, `Calibrator`, `Cache` — so users build their own adapters, calibrators, and caches without forking the library.
+The design discipline is small core plus clear extension points: an opinionated public API kept deliberately minimal, and a small set of published interfaces — `Provider`, `Calibrator`, `Cache` — that let users build their own adapters, calibrators, and caches without forking the library.
 
 **Core verbs:**
 - `domovoi.classify(input, space)` — multi-class one-shot

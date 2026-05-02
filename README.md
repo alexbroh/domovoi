@@ -66,6 +66,17 @@ async function processTransaction(transaction: Transaction): Promise<void> {
 
 ---
 
+## Install
+
+```bash
+npm install @hourslabs/domovoi
+
+# set your provider credentials
+OPENAI_API_KEY=sk-...
+```
+
+---
+
 ## What this replaces
 
 The same shape shows up across mainstream libraries: [Mozilla Readability](https://github.com/mozilla/readability) and [Mercury Parser](https://github.com/postlight/parser) for article extraction (DOM-node classification), [GitHub Linguist](https://github.com/github-linguist/linguist) for code language detection, [crisp-oss/email-reply-parser](https://github.com/crisp-oss/email-reply-parser/blob/master/lib/regex.ts) and [Mailgun's talon](https://github.com/mailgun/talon) for email fragment parsing — gnarly regex/heuristic piles that grow without ever fully solving the problem. Here's the email-reply-parser version, paraphrased:
@@ -124,17 +135,6 @@ await match(fragment, {
 </td>
 </tr>
 </table>
-
----
-
-## Install
-
-```bash
-npm install @hourslabs/domovoi
-
-# set your provider credentials
-OPENAI_API_KEY=sk-...
-```
 
 ---
 

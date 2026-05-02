@@ -1,5 +1,5 @@
 ---
-"domovoi": minor
+"@hours/domovoi": minor
 ---
 
 Initial v0 engine: Verdict combinators, calibrator math, in-memory LRU cache (with TTL, in-flight dedup, stats), env-driven provider resolution (`DOMOVOI_PROVIDERS`), and engine semantics — thresholds, chain fallback, cancellation via `AbortSignal`, AggregateError under `onErrorPolicy: "throw"`, JSON-serializable Verdicts, `.batch`.

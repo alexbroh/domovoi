@@ -4,7 +4,7 @@
 
 # domovoi
 
-[![npm version](https://img.shields.io/npm/v/domovoi)](https://www.npmjs.com/package/domovoi)
+[![npm version](https://img.shields.io/npm/v/@hours/domovoi)](https://www.npmjs.com/package/@hours/domovoi)
 [![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
 [![typescript](https://img.shields.io/badge/typescript-%3E%3D5-blue)](https://www.typescriptlang.org)
 [![license](https://img.shields.io/badge/license-Apache%202.0-lightgrey)](LICENSE)
@@ -42,7 +42,7 @@ domovoi is a single function call at the decision point. Unlike agent frameworks
 The `Verdict` is the core idea. Not a string, not a confidence score — one of three typed states: `Classified` when confident, `Uncertain` when the top answer falls below threshold, `Unknown` when no answer is possible. Uncertainty becomes a first-class value your type system understands, not a silent wrong answer. Everything around the `Verdict` stays deterministic.
 
 ```tsx
-import { domovoi, match } from "domovoi";
+import { domovoi, match } from "@hours/domovoi";
 
 async function processTransaction(txn: Transaction) {
   const account = await accounts.get(txn.accountId);
@@ -71,7 +71,7 @@ async function processTransaction(txn: Transaction) {
 ## Install
 
 ```bash
-npm install domovoi
+npm install @hours/domovoi
 
 # set your provider credentials
 OPENAI_API_KEY=sk-...
@@ -141,7 +141,7 @@ match(verdict, {
 
 `Verdict.filter(pred)` rejects domain-invalid `Classified` or `Uncertain` to `Unknown { predicate_rejected }`; `Unknown` passes through untouched.
 
-Three extension interfaces let you write your own without forking: **`Provider`** for any LLM API, **`Calibrator`** for custom calibration math, **`Cache`** for persistent or distributed backends. `mockProvider` from `domovoi/testing` covers unit tests with controllable Distributions.
+Three extension interfaces let you write your own without forking: **`Provider`** for any LLM API, **`Calibrator`** for custom calibration math, **`Cache`** for persistent or distributed backends. `mockProvider` from `@hours/domovoi/testing` covers unit tests with controllable Distributions.
 
 ---
 
@@ -150,7 +150,7 @@ Three extension interfaces let you write your own without forking: **`Provider`*
 Verdicts compose. A Verdict can gate the next call, so each classifier works over a small, coherent space rather than one flat list of labels:
 
 ```tsx
-import { domovoi, isClassified } from "domovoi";
+import { domovoi, isClassified } from "@hours/domovoi";
 
 const kind = await domovoi.classify(issue.body, [
   "bug", "feature", "question", "docs",
@@ -248,7 +248,7 @@ controller.abort("budget_exceeded");
 
 ## Calibration
 
-Three closed-form scaling factories from `domovoi/calibration`:
+Three closed-form scaling factories from `@hours/domovoi/calibration`:
 
 | Factory | When to use |
 |---|---|

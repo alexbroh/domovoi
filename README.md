@@ -44,21 +44,19 @@ The `Verdict` is the core idea. Not a string, not a confidence score — one of 
 ```tsx
 import { domovoi, match } from "@hourslabs/domovoi";
 
-async function processTransaction(txn: Transaction) {
+async function processTransaction(txn: Transaction): Promise<void> {
   if (await fraud.isSuspicious(txn)) return holds.queue(txn);
 
   const account = await accounts.get(txn.accountId);
   const verdict = await domovoi.classify(
     txn.merchant,              // e.g. "NETFLIX.COM"
-    account.budget.categories  // e.g. ["shopping", "groceries", ...]
+    account.budget.categories, // e.g. ["shopping", "groceries", ...]
   );
 
   await match(verdict, {
-    classified: ({ value }) => budget.attribute(account, txn, value),
-    uncertain:  ({ top, runnerUp }) =>
-      budget.attributePending(account, txn, top, runnerUp),
-    unknown:    ({ reason }) =>
-      retryQueue.schedule(txn, { reason, delayMs: 5 * 60_000 }),
+    classified: ({ value })         => budget.attribute(account, txn, value),
+    uncertain:  ({ top, runnerUp }) => budget.attributePending(account, txn, top, runnerUp),
+    unknown:    ({ reason })        => retryQueue.schedule(txn, { reason, delayMs: 5 * 60_000 }),
   });
 
   await receipts.archive(txn);

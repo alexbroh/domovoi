@@ -37,7 +37,7 @@ Some decisions in software resist code. Is "SQ *COFFEE 0421" a restaurant or a g
 
 Rules and trained classifiers have tackled this for decades. Rules break on edge cases, then multiply until they collapse under their own weight. Classifiers return a confidence score and leave the handling to you. They don't know what they don't know.
 
-domovoi is a single function call at the decision point. Unlike agent frameworks or workflow engines, it doesn't restructure how you build — it drops into existing code like any other dependency. Ask it, get a typed `Verdict`, continue.
+domovoi is a single function call at the decision point. Unlike agent frameworks or workflow engines, it doesn't restructure how you build — it drops into existing code like any other dependency. Ask it, get a typed `Verdict`, dispatch.
 
 The `Verdict` is the core idea. Rather than a string or a confidence score, domovoi returns one of three typed states: `Classified` when confident, `Uncertain` when the top answer falls below threshold, `Unknown` when no answer is possible. Uncertainty becomes a first-class value your type system understands, not a silent wrong answer. Everything around the `Verdict` stays deterministic.
 

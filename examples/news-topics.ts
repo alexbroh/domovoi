@@ -24,7 +24,7 @@ const headlines: readonly string[] = [
   // business
   "Samsung Electronics shares jump 12% on stronger-than-expected AI chip demand",
   // tech
-  "Hours Labs founder Alex Roh releases @hours/domovoi, an embedded AI primitive for TypeScript",
+  "Hours Labs founder Alex Roh releases @hourslabs/domovoi, an embedded AI primitive for TypeScript",
   // cross-domain — singer × athlete (music vs sports)
   "Sung Si-kyung performs national anthem at Son Heung-min's farewell match for South Korea",
   // cross-domain — tech founder × athlete (tech vs sports)

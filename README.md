@@ -4,210 +4,179 @@
 
 # domovoi
 
-**domovoi is an embedded intelligence-in-the-runtime. Not a service, but a primitive that lives inside your software.** Ask questions at the forks where rules don't fit; receive typed Verdicts; ship to production with bounded cost and full observability.
+[![npm version](https://img.shields.io/npm/v/domovoi)](https://www.npmjs.com/package/domovoi)
+[![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
+[![typescript](https://img.shields.io/badge/typescript-%3E%3D5-blue)](https://www.typescriptlang.org)
+[![license](https://img.shields.io/badge/license-Apache%202.0-lightgrey)](LICENSE)
 
-```ts
-import { domovoi, match } from "domovoi";
-
-// 1. Classify
-const verdict = await domovoi.classify(
-  "NETFLIX.COM",
-  ["shopping", "groceries", "dining", "transportation", "subscriptions"],
-);
-
-// 2. Dispatch — each branch gets typed access to its slice of the Verdict
-await match(verdict, {
-  classified: ({ value })         => categories.assign(value),
-  uncertain:  ({ top, runnerUp }) => reviewQueue.add(top, runnerUp),
-  unknown:    ({ reason })        => deadletter.send(reason),
-});
-```
-
-**That's it.** The classification gives you a typed Verdict; the dispatch is where the work actually happens. Same shape every time: route the confident cases to handlers, route the ambiguous ones to humans, route the failures somewhere observable.
-
-Other places this shape shows up in product code:
-
-**Bank transaction categorization**
-
-```
-"NETFLIX.COM"                       →  subscriptions   (p=1.00)
-"WHOLE FOODS MARKET #10293"         →  groceries       (p=0.99)
-"UBER EATS"                         →  dining          (p=0.99)
-"SHELL OIL 12345"                   →  transportation  (p=0.93)
-"AMZN MKTP US*A12B3C4D5"            →  uncertain       (shopping vs groceries, p=0.55)
-```
-
-**Email categorization**
-
-```
-"Your order has shipped — Order #4821"    →  shipping       (p=0.99)
-"30% off all items today only!"           →  promotional    (p=0.99)
-"Re: project update — please review"      →  work           (p=0.91)
-"Mom's birthday dinner next Saturday"     →  personal       (p=0.97)
-"Re: meeting tomorrow at 2pm"             →  uncertain      (work vs personal, p=0.45)
-```
-
-**Issue triage**
-
-```
-"App crashes on startup after upgrading to v4.2 on macOS"           →  bug        (p=0.96)
-"Add support for OAuth providers beyond Google"                     →  feature    (p=0.94)
-"How do I configure the cache TTL?"                                 →  question   (p=0.91)
-"Typo in README: occured → occurred"                                →  docs       (p=0.99)
-"Slow with many items, would be nice if pagination was smarter"     →  uncertain  (bug vs feature, p=0.55)
-```
-
-> Today's release ships the Verdict primitive: typed classification with calibrated probability, plus structured failure modes for the cases the model can't handle. The next release adds `domovoi.scope` — ambient budget enforcement and cancellation across embedded calls. The [Roadmap](#roadmap) has the rest.
+**domovoi is an embedded intelligence in the runtime — a primitive that lives inside your software.** Ask at the forks where rules break down, get a typed Verdict, and direct it with bounded cost and full observability.
 
 ---
 
-## How it compares
+- [What is domovoi](#what-is-domovoi)
+- [Install](#install)
+- [Typed Verdicts](#typed-verdicts)
+- [When to Use It](#when-to-use-it)
+- [API](#api)
+- [Chaining](#chaining)
+- [Provider Chain and Escalation](#provider-chain-and-escalation)
+- [Local LLMs](#local-llms)
+- [Configuration](#configuration)
+- [Cancellation](#cancellation)
+- [Calibration](#calibration)
+- [Cache](#cache)
+- [Current Limitations](#current-limitations)
+- [Roadmap](#roadmap)
+- [Origin](#origin)
 
-|                              | domovoi                              | LangGraph             | Temporal / Inngest      | Vanilla LLM SDK    |
-| ---------------------------- | ------------------------------------ | --------------------- | ----------------------- | ------------------ |
-| **Shape**                    | Library you sprinkle                 | Framework you adopt   | Workflow engine         | Service client     |
-| **AI in routing decisions**  | Yes (typed)                          | Yes (untyped state)   | No                      | N/A                |
-| **Typed uncertainty**        | `Classified \| Uncertain \| Unknown` | Free-form state       | Hand-coded              | Argmax string only |
-| **Calibrated probability**   | First-class                          | No                    | No                      | No                 |
-| **Cancellation**             | `AbortSignal` native                 | Manual                | Native                  | Provider-specific  |
-| **Per-call cost / latency**  | ~50–500ms, one LLM call              | Per-step, agent-loop  | Workflow-orchestrated   | Per-call           |
+---
 
-## Features
+## What is domovoi
 
-- **Typed Verdicts** — `Classified<T> | Uncertain<T> | Unknown<T>` discriminated union; failure-to-classify is a first-class typed result, not a thrown exception.
-- **Calibrated probabilities** — temperature scaling, Platt scaling, identity. You supply fit parameters today; fitting from labeled data is on the roadmap.
-- **Provider chain with fallback** — escalate on uncertainty or error; structured per-attempt error metadata.
-- **AbortSignal cancellation** — native, throughout. `AbortSignal.timeout`, `AbortSignal.any` compose naturally.
-- **Tokenizer-aware** — `cl100k_base` for first-token collision detection and logit_bias steering on hosted OpenAI; string-prefix fallback for backends with unknown tokenizers.
-- **Pluggable extension points** — `Provider`, `Calibrator`, `Cache` as public interfaces. Build your own without forking.
-- **Local LLMs** — Ollama, vLLM, LM Studio, Together, Fireworks, OpenRouter via `openaiCompat`.
+Some decisions in software resist code. Is "SQ *COFFEE 0421" a restaurant or a grocery store? Is this message a refund request or a complaint? Is this form submission an abandoned checkout or a contact inquiry? A human decides in seconds. Code never will.
 
-## Why "domovoi"
+Rules and trained classifiers have tackled this for decades. Rules break on edge cases, then multiply until they collapse under their own weight. Classifiers return a confidence score and leave the handling to you. They don't know what they don't know.
 
-In Slavic folklore, a *domovoi* (домово́й — "of the house") is a household guardian spirit. It belongs to the house, gets inherited with the property, and looks after whoever lives there. You don't summon it from outside, and it doesn't go off and do its own thing. It stays in the home, sees what comes through the door, and gives its verdict. **Bind a domovoi to your codebase. Receive Verdicts. Ship.**
+domovoi is a single function call at the decision point. Unlike agent frameworks or workflow engines, it doesn't restructure how you build — it drops into existing code like any other dependency. Ask it, get a typed `Verdict`, continue.
 
-## Where this fits
+The `Verdict` is the core idea. Not a string, not a confidence score — one of three typed states: `Classified` when confident, `Uncertain` when the top answer falls below threshold, `Unknown` when no answer is possible. Uncertainty becomes a first-class value your type system understands, not a silent wrong answer. Everything around the `Verdict` stays deterministic.
 
-A domovoi belongs at the forks where you'd otherwise write a brittle regex pile, defer to a human, or skip the decision entirely:
-
-- **Intent routing** — *"is this ticket a refund, complaint, or question?"* `Classified` flows to a handler; `Uncertain` flows to a human review queue; `Unknown { provider_failure }` flows to dead-letter.
-- **Smart triage** — *"which team owns this incident? which engineer for this code review?"* Replace the inbox-routing regex pile with a domovoi over your team taxonomy.
-- **Tiered dispatch** — chain `[gpt-4o-mini, gpt-5]` resolves cheaply when the model is confident and escalates to the expensive call only on `Uncertain`. Real money saved when ≥70–80% of inputs resolve at the cheap tier — pre-RAG gates, pre-action filters, editor-feature dispatch — but break-even is on you.
-- **Ingestion-time batch classification** — *"categorize 100K menu items / auto-label every issue / triage the email backlog overnight."* `c.batch(items, { concurrency })` with provider chain + per-item Verdicts; failures stay isolated, the rest of the batch finishes.
-- **Moderation with human-in-the-loop** — *"is this content NSFW, spam, or fine?"* `Uncertain` is the entire moderation queue. Stop picking a fixed threshold and praying.
-- **Fuzzy validation beyond regex** — *"does this product description actually describe this product?"* The check that's trivial for a human and impossible for a regex.
-- **PR / code-review gating** — *"is this PR safe to auto-merge?"* `Classified { value: "yes", probability: 0.91 }` auto-merges; `Uncertain` requests human review with the runner-up carried in the Verdict.
-
-The same shape repeats: a decision that's easy for a human but hard to write rules for, with a bounded downside if you get it wrong. You want a typed verdict you can dispatch on, not a string you have to parse.
-
-## Before / after
-
-Routing a support ticket without a domovoi: a regex pile that grows every time someone reports a misroute, and that silently misclassifies whenever an input phrasing isn't anticipated.
-
-```ts
-function routeTicket(ticket: Ticket) {
-  if (/\b(refund|return|money[- ]?back|charge[- ]?back)\b/i.test(ticket.body)) {
-    return handleRefund(ticket);
-  }
-  if (/\b(broken|doesn'?t work|not working|defective|stopped working)\b/i.test(ticket.body)) {
-    return handleComplaint(ticket);
-  }
-  if (/\?\s*$/.test(ticket.body) || /\b(how|why|when|where)\b/i.test(ticket.body)) {
-    return handleQuestion(ticket);
-  }
-  // What about "I want my money back, this is broken"? Falls to triage.
-  // Triage drowns. Bug reports follow. Add a regex. Repeat.
-  return triage(ticket);
-}
-```
-
-Routing the same ticket *with* a domovoi at the fork:
-
-```ts
+```tsx
 import { domovoi, match } from "domovoi";
 
-async function routeTicket(ticket: Ticket) {
-  const intent = await domovoi.classify(
-    ticket.body,
-    ["refund", "complaint", "question"],
-    { question: "What is this customer asking for?" },
+async function processTransaction(txn: Transaction) {
+  const account = await accounts.get(txn.accountId);
+  if (await fraud.isSuspicious(txn)) return holds.queue(txn);
+
+  const verdict = await domovoi.classify(
+    txn.merchant,           // e.g. "NETFLIX.COM"
+    account.budget.categories  // e.g. ["shopping", "groceries", ...]
   );
-  return match(intent, {
-    classified: ({ value })           => handlers[value](ticket),
-    uncertain:  ({ top, runnerUp })   => humanReview.queue(ticket, top, runnerUp),
-    unknown:    ()                    => triage(ticket),
+
+  await match(verdict, {
+    classified: ({ value }) => budget.attribute(account, txn, value),
+    uncertain:  ({ top, runnerUp }) =>
+      budget.attributePending(account, txn, top, runnerUp),
+    unknown:    ({ reason }) =>
+      retryQueue.schedule(txn, { reason, delayMs: 5 * 60_000 }),
   });
+
+  await receipts.archive(txn);
+  events.emit("txn.processed", txn.id);
 }
 ```
 
-The regex pile collapses into a three-class typed space. The "I want my money back, this is broken" case lands as `Uncertain` with `top: "complaint"` and `runnerUp: "refund"`, so the review queue already knows both candidates before a human looks at the ticket. And triage stops being the bucket for "anything we couldn't match" and becomes the bucket for "the model failed, we genuinely don't know."
+---
+
+## Install
+
+```bash
+npm install domovoi
+
+# set your provider credentials
+OPENAI_API_KEY=sk-...
+```
 
 ---
 
-## Why typed Verdicts
+## Typed Verdicts
 
-Most LLM-classification approaches force you to choose between:
-- **Free-form generation** — flexible but unstructured; you parse and pray.
-- **Strict structured output** — argmax string in a fixed enum; no signal when the model is uncertain or the input doesn't fit.
+domovoi treats classification as a probabilistic decision over a finite space and returns one of three typed variants:
 
-domovoi treats classification as a **probabilistic decision over a finite space**: emit a calibrated Distribution, threshold it, return one of three typed variants:
+- **`Classified<T>`** — confident answer with `value: T` and calibrated `probability`.
+- **`Uncertain<T>`** — top class below threshold; carries `top`, `runnerUp`, and the full `distribution`.
+- **`Unknown<T>`** — no answer; `reason` discriminates `out_of_distribution`, `chain_exhausted`, `provider_failure`, `predicate_rejected`, `budget_exhausted`, or `cancelled`.
 
-- **`Classified<T>`** — confident answer with `value: T` and `probability: number`.
-- **`Uncertain<T>`** — top class below threshold; carries `top`, `runnerUp`, full `distribution`.
-- **`Unknown<T>`** — no answer; reason discriminates `out_of_distribution` / `chain_exhausted` / `provider_failure` / `predicate_rejected` / `budget_exhausted` / `cancelled`.
+Failure-to-classify is a typed result, not an exception. Dispatch is exhaustive at the type level.
 
-Failure-to-classify is a typed result, not an exception you have to catch.
+```
+"NETFLIX.COM"                   →  subscriptions   (p=1.00)
+"WHOLE FOODS MARKET #10293"     →  groceries       (p=0.99)
+"UBER EATS"                     →  dining          (p=0.99)
+"SHELL OIL 12345"               →  transportation  (p=0.93)
+"AMZN MKTP US*A12B3C4D5"        →  uncertain       (shopping vs groceries, p=0.55)
+```
 
-## Design principle — small core + clear extension points
+The `AMZN MKTP` row shows why the third state exists: it could be shopping or groceries depending on the cart. A forced `argmax` would silently pick the wrong one. domovoi surfaces the ambiguity as a first-class result instead.
 
-domovoi keeps the public API deliberately small. The three extension interfaces — `Provider`, `Calibrator`, `Cache` — are public so you can write your own adapters, calibrators, and caches in your own code, without forking the library.
+---
 
-**Core verbs:**
-- `domovoi.classify(input, space)` — multi-class one-shot
-- `domovoi.boolean(input, question)` — binary one-shot
-- `domovoi.classifier({ ... })` — reusable configured classifier (returns `Classifier<T, I>`)
+## When to Use It
 
-**Type guards + match helper:**
-- `isClassified(v)`, `isUncertain(v)`, `isUnknown(v)`
-- `match(v, { classified, uncertain, unknown })` — exhaustive; type-checked
+The pattern that fits: *a decision that's obvious to a person but impossible to write rules for, with a bounded downside when you get it wrong.*
 
-**Combinators:**
-- `Verdict.filter(pred)` — domain-validity rejection over Classified/Uncertain. Unknown passes through.
+- **Intent routing** — refund, complaint, or question. Rules and regex can't cover the full input space.
+- **Content classification** — tag an article, ticket, or submission against your taxonomy. Replace brittle keyword rules with a classifier that handles edge cases.
+- **Tiered dispatch** — chain `[gpt-4o-mini, gpt-5]`. The cheap model handles the easy cases; the expensive one runs only on `Uncertain`. Cost savings are meaningful when ≥70–80% of calls resolve at the cheaper tier.
+- **Fuzzy validation** — does this description match the product category? Obvious to a person, not expressible as regex.
 
-That's the surface. Everything else is technical: `Provider`, `Calibrator`, `Cache`, `mockProvider`, `temperatureScaling`, `plattScaling`.
+---
 
-## Three idioms
+## API
 
-```ts
-const verdict = await articleClassifier(article);
+Three core verbs:
 
-// 1. Type guard — simple cases
+```tsx
+domovoi.classify(input, space, opts?)    // multi-class one-shot
+domovoi.boolean(input, question, opts?)  // binary one-shot
+domovoi.classifier({ ... })             // reusable, configured → Classifier<T, I>
+```
+
+Three ways to consume a Verdict:
+
+```tsx
+// Type guard — single-variant cases
 if (isClassified(verdict)) save(verdict.value);
 
-// 2. Switch on kind — full routing
-switch (verdict.kind) {
-  case "classified": save(verdict.value); break;
-  case "uncertain":  reviewQueue.add(verdict.top, verdict.runnerUp); break;
-  case "unknown":
-    switch (verdict.reason.type) {
-      case "out_of_distribution": newCategoryQueue.add(verdict.reason.topIfRenormalized); break;
-      case "provider_failure":    deadLetterQueue.push(verdict.reason.errors); break;
-      // ... cancelled, budget_exhausted, chain_exhausted, predicate_rejected
-    }
-    break;
-}
+// switch — when each Unknown reason needs its own handler
+switch (verdict.kind) { ... }
 
-// 3. match — exhaustive expression form
+// match — exhaustive expression form, type-checked
 match(verdict, {
-  classified: ({ value })          => save(value),
-  uncertain:  ({ top, runnerUp })  => reviewQueue.add(top, runnerUp),
-  unknown:    ({ reason })         => handleUnknown(reason),
+  classified: ({ value })         => save(value),
+  uncertain:  ({ top, runnerUp }) => saveTentative(top, runnerUp),
+  unknown:    ({ reason })        => handleUnknown(reason),
 });
 ```
 
-## Provider chain + escalation
+`Verdict.filter(pred)` rejects domain-invalid `Classified` or `Uncertain` to `Unknown { predicate_rejected }`; `Unknown` passes through untouched.
 
-```ts
+Three extension interfaces let you write your own without forking: **`Provider`** for any LLM API, **`Calibrator`** for custom calibration math, **`Cache`** for persistent or distributed backends. `mockProvider` from `domovoi/testing` covers unit tests with controllable Distributions.
+
+---
+
+## Chaining
+
+Verdicts compose. A Verdict can gate the next call, so each classifier works over a small, coherent space rather than one flat list of labels:
+
+```tsx
+import { domovoi, isClassified } from "domovoi";
+
+const kind = await domovoi.classify(issue.body, [
+  "bug", "feature", "question", "docs",
+]);
+
+// only bugs need surface-area triage — the first Verdict gates the second call
+const surface =
+  isClassified(kind) && kind.value === "bug"
+    ? await domovoi.classify(issue.body, [
+        "frontend", "backend", "infra", "data",
+      ])
+    : null;
+
+await issues.label(issue, {
+  kind:    isClassified(kind)    ? kind.value    : "triage",
+  surface: surface && isClassified(surface) ? surface.value : null,
+});
+```
+
+---
+
+## Provider Chain and Escalation
+
+Configure a named classifier with a provider chain, thresholds, and a calibrator using `domovoi.classifier`:
+
+```tsx
 const articleClassifier = domovoi.classifier({
   name: "articles",
   space: ["news", "sports", "music"],
@@ -219,71 +188,124 @@ const articleClassifier = domovoi.classifier({
 });
 ```
 
-If the first provider returns `Uncertain` or errors, the engine tries the next. Errors are recorded in `verdict.meta.providerErrors`. Default `onErrorPolicy: "fallback"` returns `Unknown { provider_failure }` on full-chain failure — it never throws. Set `onErrorPolicy: "throw"` for `AggregateError`.
+If the first provider returns `Uncertain` or errors, the engine tries the next. Errors land in `verdict.meta.providerErrors`. The default `onErrorPolicy: "fallback"` returns `Unknown { provider_failure }` on full-chain failure — it never throws. Set `onErrorPolicy: "throw"` for `AggregateError`.
 
-## Env contract
+Every Verdict includes rich metadata — provider, attempted chain, latency, cache hits, distribution source, and swallowed fallback errors — without extra instrumentation.
+
+---
+
+## Local LLMs
+
+Local runtimes ship OpenAI-compatible APIs, so you can mix them freely with hosted models in a single chain:
+
+```tsx
+// local primary, hosted fallback
+providers: [ollama("llama-3.1-70b"), openai("gpt-4o")]
+```
+
+`ollama(model)` defaults to `localhost:11434`. `openaiCompat(model, { baseURL, apiKey })` covers LM Studio, vLLM, Together, Fireworks, and OpenRouter.
+
+---
+
+## Configuration
 
 ```bash
-# Credentials (always in env; factories pick up automatically)
+# Credentials — provider factories pick these up automatically
 OPENAI_API_KEY=sk-...
 
 # Default provider chain — comma-separated factory/model
 DOMOVOI_PROVIDERS=openai/gpt-4o-mini,openai/gpt-4o
 
-# Per-classifier override (when classifier has `name: "articles"`)
+# Per-classifier override — when the classifier has `name: "articles"`
 DOMOVOI_PROVIDERS_ARTICLES=openai/gpt-4o-mini,ollama/llama-3.1-70b
 ```
 
-Format: `factory/model[,factory/model...]`. First `/` separates factory from model. Whitespace trimmed; empty entries skipped.
+Format: `factory/model[,factory/model...]`. Whitespace is trimmed; empty entries are skipped. In-code overrides win — pass `providers` to `domovoi.classifier({ ... })` and the env is ignored.
 
-In-code overrides win — `domovoi.classifier({ ..., providers: [...] })` ignores env.
-
-## Local LLMs
-
-Local LLM runtimes ship OpenAI-compatible APIs. `ollama("llama-3.1-70b")` for Ollama (defaults to `localhost:11434`); `openaiCompat(model, { baseURL, apiKey })` for LM Studio, vLLM, Together, Fireworks, OpenRouter. Mix freely with hosted models in a single provider chain — `[ollama(...), openai(...)]` runs local primary, hosted fallback.
+---
 
 ## Cancellation
 
-Pass `signal` to any call. Standard Web API throughout: `AbortSignal.timeout(ms)`, `AbortSignal.any([parent, deadline])`, `controller.abort(reason)` — the reason propagates into `Unknown { cancelled, reason }`. `.batch` always returns partial results; finished items keep their Verdicts, in-flight and queued items become `Unknown { cancelled }`. The Promise resolves; it does not reject.
+Pass `signal` to any call. Standard Web API throughout:
+
+```tsx
+// per-call timeout
+const verdict = await domovoi.classify(input, space, {
+  signal: AbortSignal.timeout(2000),
+});
+
+// composing signals
+const signal = AbortSignal.any([parentSignal, AbortSignal.timeout(5000)]);
+
+// abort with reason
+controller.abort("budget_exceeded");
+// → Unknown { kind: "cancelled", reason: "budget_exceeded" }
+```
+
+`.batch` always returns partial results. Finished items keep their Verdicts; in-flight and queued items become `Unknown { cancelled }`. The Promise resolves; it does not reject.
+
+---
 
 ## Calibration
 
-Three closed-form scaling factories from `domovoi/calibration`: `identity` (default — no calibration), `temperatureScaling(T)` (any space size), `plattScaling({ a, b })` (binary only). Fit parameters come from *your* held-out eval set; a `Calibrator.fit(eval)` API for fitting from labeled data is on the roadmap. Multi-sample providers are identity-only for now.
+Three closed-form scaling factories from `domovoi/calibration`:
+
+| Factory | When to use |
+|---|---|
+| `identity` | Default. No calibration applied. |
+| `temperatureScaling(T)` | Works on any space size. |
+| `plattScaling({ a, b })` | Binary classifiers only. |
+
+Fit the parameters on your held-out eval set. `Calibrator.fit(eval)` is on the roadmap; until then, fitting is manual. Calibrators run per-caller after cache resolution, so different configs on the same cache key produce different Verdicts from the same raw Distribution.
+
+---
 
 ## Cache
 
-Raw distributions cached per `(input, provider)` keyed by SHA-256. Default: in-memory LRU, 10k entries per-classifier; pass `cache: domovoi.memoryCache({ maxEntries })` to override.
+Raw distributions are cached per `(input, provider)` keyed by SHA-256. The default is an in-memory LRU at 10k entries per classifier:
 
-Two invariants worth knowing. The cache hashes the *output* of `format(input)`, not the function itself — two classifiers with different `format` but identical output share rows. The calibrator runs **per-caller** after cache resolution, so different calibrator configs on the same cache key produce different Verdicts from the same raw Distribution.
+```tsx
+// override the default
+domovoi.classifier({
+  cache: domovoi.memoryCache({ maxEntries: 50_000 }),
+  // ...
+});
+```
 
-Custom backends — Redis, SQLite, Cloudflare KV — implement the public `Cache` interface (`get`, `set`, `delete` over opaque strings); engine handles serialization.
+The cache hashes the *output* of `format(input)`, not the function itself. Two classifiers with different `format` implementations but identical output share cache rows.
 
-## Extension points
+Custom backends implement the public `Cache` interface. Redis, SQLite, and Cloudflare KV are planned as first-party packages; they're implementable today via the interface.
 
-Three public interfaces for backends domovoi doesn't ship: `Provider` (any LLM API), `Calibrator` (custom calibration math), `Cache` (persistent/distributed). Plus `mockProvider` from `domovoi/testing` for unit tests with controllable Distribution outputs.
+---
 
-## Current limitations
+## Current Limitations
 
-1. **Single adapter family** — OpenAI Chat + OpenAI-compatible runtimes (Ollama, vLLM, LM Studio, Together, Fireworks). Anthropic native (multi-sample with verbalized confidence) is on the roadmap.
-2. **In-memory cache only** — process-local; serverless cold starts begin empty. Persistent backends (Redis, SQLite, KV) are implementable today via the public `Cache` interface.
-3. **Identity calibrator default** — provide `temperatureScaling(T)` or `plattScaling({a,b})` parameters fitted on your eval set for real calibration. A `Calibrator.fit()` API for fitting from labeled data is planned.
-4. **No retries on `ProviderError`** — chain fallback covers between-provider failures; per-provider retries are planned.
-5. **No streaming** — `.stream` on `Classifier` is planned (`.batch` ships today).
-6. **No few-shot prompting** — input passes verbatim; users wrap with their own example-injection if needed.
+1. **Single adapter family.** OpenAI Chat plus OpenAI-compatible runtimes (Ollama, vLLM, LM Studio, Together, Fireworks). Anthropic native and Gemini are on the roadmap.
+2. **In-memory cache only.** Process-local; serverless cold starts begin empty. Persistent backends are implementable today via the public `Cache` interface; first-party Redis, SQLite, and KV packages are planned.
+3. **Identity calibrator default.** Provide `temperatureScaling(T)` or `plattScaling({ a, b })` with parameters you fit on your eval set for real calibration. Automated fitting (`Calibrator.fit(eval)`) is planned.
+4. **No per-provider retries.** Chain fallback covers between-provider failures; per-provider retries are planned.
+5. **No streaming.** `.stream` on `Classifier` is planned; `.batch` ships today.
+6. **No few-shot prompting.** Input passes verbatim; wrap with your own example-injection if needed.
+
+---
 
 ## Roadmap
 
-Ordered milestones below. The order is committed, the calendar isn't, and specific version numbers live on the npm package page and in GitHub Releases.
+Milestones are ordered; dates are not. For exact versions, see the npm package page and GitHub Releases.
 
-**Today.** The Verdict primitive: discriminated `Classified<T>` / `Uncertain<T>` / `Unknown<T>` with structured failure modes; `classify` / `boolean` / `classifier` verbs; calibration infrastructure; pluggable provider chain; tokenizer-aware OpenAI adapter; `Provider` / `Calibrator` / `Cache` extension points.
+**Today.** The Verdict primitive — `Classified<T>`, `Uncertain<T>`, and `Unknown<T>` with structured failure modes. The `classify`, `boolean`, and `classifier` verbs. Calibration infrastructure, pluggable provider chain, tokenizer-aware OpenAI adapter, and the `Provider` / `Calibrator` / `Cache` extension points.
 
-**Next.** Ambient context propagation. `domovoi.scope({ budget, signal, tracer }, fn)` opts into budget enforcement, tracing, and cancellation across embedded `domovoi.classify(...)` calls deep in your call tree — no prop-drilling. New public extension point: `ContextStorage<T>` (default backed by Node `AsyncLocalStorage`). Distribution-shaped test primitives. Embedded calls outside a scope work exactly as today — zero-disruption upgrade.
+**Next.** Ambient context propagation via `domovoi.scope({ budget, signal, tracer }, fn)` — opt into budget enforcement, tracing, and cancellation across all `domovoi.classify(...)` calls deep in your call tree. New public extension point: `ContextStorage<T>`, backed by Node `AsyncLocalStorage`. Calls outside a scope continue to work exactly as today.
 
-**After that.** Production-ready embedded AI dispatch. Replay (re-run deterministic modules along the AI-decided path that actually happened, no new LLM calls). `Calibrator.fit(eval)` for fitting calibrators from labeled data. Provider matrix complete (Anthropic native multi-sample, Gemini, Cohere, vLLM, Together, Fireworks, OpenRouter convenience factories). First-party persistent caches (Redis, SQLite, Cloudflare KV). Built-in OpenTelemetry integration. `.stream` on `Classifier`. Determinism declarations (type-checked refusal of AI in regulated paths).
+**Stability.** The Verdict shape, the three core verbs, and the four error classes are stable across releases. The `Provider` / `Calibrator` / `Cache` extension interfaces are public — breaking changes require a major version bump. Pre-1.0 releases may break anything outside these interfaces; pin an exact version if stability is required today.
 
-**Horizon.** Multi-language ports (Python first; cache schema is language-neutral by design). Multi-modal Verdicts over images and audio. Online calibration from production traces.
+---
 
-**Stability commitments.** The Verdict shape, the three core verbs, and the four error classes are stable across releases. The `Provider` / `Calibrator` / `Cache` extension interfaces are public — breaking them requires a major version bump. Pre-1.0 releases may break anything outside the extension interfaces. Pin an exact version if you need that stability today.
+## Origin
+
+In Slavic folklore, a _domovoi_ (домово́й — "of the house") is a household spirit, not summoned from outside but bound to the home itself. It belongs to whoever lives there, watches over the household, and tends to what needs tending. domovoi is that spirit for your software: present at every decision, bound to you.
+
+---
 
 ## License
 

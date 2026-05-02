@@ -45,11 +45,11 @@ The `Verdict` is the core idea. Not a string, not a confidence score — one of 
 import { domovoi, match } from "@hourslabs/domovoi";
 
 async function processTransaction(txn: Transaction) {
-  const account = await accounts.get(txn.accountId);
   if (await fraud.isSuspicious(txn)) return holds.queue(txn);
 
+  const account = await accounts.get(txn.accountId);
   const verdict = await domovoi.classify(
-    txn.merchant,           // e.g. "NETFLIX.COM"
+    txn.merchant,              // e.g. "NETFLIX.COM"
     account.budget.categories  // e.g. ["shopping", "groceries", ...]
   );
 

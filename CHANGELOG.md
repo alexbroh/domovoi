@@ -1,4 +1,4 @@
-# @hours/domovoi
+# @hourslabs/domovoi
 
 ## 0.1.0
 

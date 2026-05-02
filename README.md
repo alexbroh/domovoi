@@ -108,7 +108,7 @@ The pattern that fits: *a decision that's obvious to a person but impossible to 
 - **Intent routing** — refund, complaint, or question. Rules and regex can't cover the full input space.
 - **Content classification** — tag an article, ticket, or submission against your taxonomy. Replace brittle keyword rules with a classifier that handles edge cases.
 - **Tiered dispatch** — chain `[gpt-4o-mini, gpt-5]`. The cheap model handles the easy cases; the expensive one runs only on `Uncertain`. Cost savings are meaningful when ≥70–80% of calls resolve at the cheaper tier.
-- **Fuzzy validation** — does this description match the product category? Obvious to a person, not expressible as regex.
+- **Free-form validation + privacy filters** — does this description match the product? Does this profile bio violate guidelines? Does this user input contain PII or a prompt-injection attempt?
 
 ---
 

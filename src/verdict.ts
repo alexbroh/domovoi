@@ -1,8 +1,7 @@
 /**
- * Verdict combinators and type guards.
- *
- * Small core: only `match`, `filter`, and the three type guards ship in v0.
- * Userspace can compose richer combinators (tap, getOrElse, etc.) in 1–3 lines.
+ * Verdict combinators and type guards. The library ships only `match`,
+ * `filter`, and the three type guards; richer combinators (tap, getOrElse,
+ * etc.) compose cleanly in userspace.
  */
 
 import type { Classified, Filterable, Label, Uncertain, Unknown, Verdict } from "./types.js";
@@ -21,7 +20,7 @@ export function isUnknown<T extends Label>(v: Verdict<T>): v is Unknown<T> {
 
 /**
  * Pattern-match against a Verdict. All three branches are required;
- * omitting one causes a type error at compile time (T8).
+ * omitting one is a compile-time error.
  *
  * @example
  * const result = match(verdict, {
@@ -49,15 +48,12 @@ export function match<T extends Label, R>(
 }
 
 /**
- * Predicate-based domain-validity filter. The predicate sees `Filterable<T>`
- * (Classified or Uncertain only); `Unknown` inputs pass through unchanged.
- *
- *   - pred returns `true`  → outcome unchanged
- *   - pred returns `false` → Unknown { predicate_rejected, previousKind }
+ * Domain-validity filter. The predicate sees `Filterable<T>` — Classified or
+ * Uncertain only. When it returns `false`, the Verdict becomes
+ * `Unknown { predicate_rejected }`. Unknown inputs pass through unchanged.
  *
  * @example
- * // Reject deprecated label whether confident or uncertain about it
- * const safe = Verdict.filter<MyLabels>((v) => {
+ * const safe = filter<MyLabels>((v) => {
  *   const pick = v.kind === "classified" ? v.value : v.top;
  *   return !DEPRECATED.has(pick);
  * })(verdict);
@@ -68,16 +64,8 @@ export function filter<T extends Label>(pred: (v: Filterable<T>) => boolean) {
     if (pred(v)) return v;
     return {
       kind: "unknown",
-      reason: {
-        type: "predicate_rejected",
-        previousKind: v.kind,
-      },
+      reason: { type: "predicate_rejected", previousKind: v.kind },
       meta: v.meta,
     };
   };
 }
-
-// Note: `Verdict` is a type (the union from types.ts), not a value namespace.
-// Users access `filter` and other combinators via named imports from "@hours/domovoi".
-// We deliberately do NOT export `const Verdict = { filter }` to avoid
-// shadowing the exported `Verdict<T>` type in the public surface.

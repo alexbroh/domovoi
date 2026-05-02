@@ -129,8 +129,8 @@ export function classifier<const T extends string, I = string>(
         const idx = next++;
         if (idx >= items.length) return;
         const item = items[idx] as I;
-        // Per G15: signal-already-aborted produces Unknown { cancelled }.
-        // The single() call handles abort discrimination internally.
+        // signal-already-aborted produces Unknown { cancelled }; abort
+        // discrimination is handled inside single().
         results[idx] = await single(
           item,
           opts?.signal !== undefined ? { signal: opts.signal } : {},

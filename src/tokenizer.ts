@@ -3,7 +3,7 @@
  *
  * Supports first-token-id resolution for decision-space collision detection
  * and logit_bias construction. Backed by tiktoken (`cl100k_base` for OpenAI
- * models in v0). Adapters that need different tokenizers can build their own
+ * models). Adapters that need different tokenizers can build their own
  * implementation of the same internal interface.
  *
  * Contract:
@@ -89,11 +89,9 @@ export function findFirstTokenCollision(
 }
 
 /**
- * Build a logit_bias map for OpenAI Chat Completions:
- *   - +bias on each in-space first-token id.
- *
- * S8 lock: `+100` for in-space; no negative biases (keeps coverage measurement
- * honest — positive bias nudges, doesn't force).
+ * Build a logit_bias map for OpenAI Chat Completions: positive bias on each
+ * in-space first-token id. Negative biases are deliberately avoided so the
+ * coverage signal stays honest — positive bias nudges, doesn't force.
  */
 export function buildLogitBias(
   tokenizer: Tokenizer,

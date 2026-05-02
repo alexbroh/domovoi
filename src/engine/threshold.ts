@@ -1,6 +1,6 @@
 /**
  * Threshold application — turn a calibrated Distribution into a per-variant
- * decision. All comparisons are inclusive (L1: `>=`, `<=`).
+ * decision. All comparisons are inclusive (`>=`, `<=`).
  *
  * - **Coverage gate first.** If `coverage < coverageMin`, return
  *   `out_of_distribution` (engine wraps this into Unknown).

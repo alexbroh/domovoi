@@ -1,13 +1,12 @@
 /**
- * domovoi.boolean(input, question, opts?) — binary one-shot.
+ * Binary one-shot classifier — returns `Verdict<boolean>`.
  *
- * Returns `Verdict<boolean>`. Internally the engine still classifies over the
- * string space `["yes", "no"]` (matches LLM first-token tokenization cleanly);
- * a small transform at the verb boundary maps `"yes" | "no"` → `boolean` so
- * the public surface is idiomatic TS.
+ * The engine internally classifies over the string space `["yes", "no"]` to
+ * match LLM first-token tokenization cleanly; a small transform at the verb
+ * boundary maps the result to `boolean` so the public surface is idiomatic.
  *
- * Defaults a binary deadband: `{ high: 0.7, low: 0.3, coverageMin: 0.3 }` (S2)
- * — illustrative only.
+ * Default deadband `{ high: 0.7, low: 0.3, coverageMin: 0.3 }` is
+ * illustrative — tune for your workload.
  */
 
 import { type Cache, memoryCache } from "../cache.js";

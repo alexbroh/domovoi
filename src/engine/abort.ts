@@ -1,9 +1,9 @@
 /**
  * Abort and budget utilities.
  *
- * Engine signal merging (K2): user signal + per-call timeout merge into a
- * single `AbortSignal.any` that gets passed to the provider. When the merged
- * signal aborts, we discriminate on the abort reason to decide whether the
+ * Engine signal merging: user signal + per-call timeout merge into a single
+ * `AbortSignal.any` that's passed to the provider. When the merged signal
+ * aborts, we discriminate on the abort reason to decide whether the
  * resulting Verdict is `Unknown { cancelled }` (user-initiated) or
  * `Unknown { budget_exhausted, scope: "per_call_timeout" }` (timeout-initiated).
  *

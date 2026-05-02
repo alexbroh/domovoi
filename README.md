@@ -1,3 +1,7 @@
+<div align="center">
+  <img alt="domovoi — a small lit cabin in a forest of binary digits, where a craftsman gnome works at his bench" src=".github/assets/cover.png" width="100%" />
+</div>
+
 # domovoi
 
 > **domovoi is an embedded intelligence-in-the-runtime — a primitive that lives inside your software.** Ask questions at the forks where rules don't fit; receive typed Verdicts; ship to production with bounded cost and full observability.

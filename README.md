@@ -66,44 +66,64 @@ async function processTransaction(transaction: Transaction): Promise<void> {
 
 ---
 
-## Compared to existing patterns
+## What this replaces
 
-Categorizing free-form text without domovoi takes three realistic shapes in production:
+The same shape shows up across mainstream libraries: [Mozilla Readability](https://github.com/mozilla/readability) and [Mercury Parser](https://github.com/postlight/parser) for article extraction (DOM-node classification), [GitHub Linguist](https://github.com/github-linguist/linguist) for code language detection, [crisp-oss/email-reply-parser](https://github.com/crisp-oss/email-reply-parser/blob/master/lib/regex.ts) and [Mailgun's talon](https://github.com/mailgun/talon) for email fragment parsing — gnarly regex/heuristic piles that grow without ever fully solving the problem. Here's the email-reply-parser version, paraphrased:
 
-**1. External vendor APIs.** Plaid's `personal_finance_category`, Stripe Issuing categories, Yodlee. The dominant pattern in OSS apps that integrate with banking — [Maybe Finance](https://github.com/maybe-finance/maybe), most YNAB importers. A static lookup table maps the vendor's taxonomy to yours:
+<table>
+<tr><th>Before</th><th>With domovoi</th></tr>
+<tr>
+<td>
 
 ```ts
-// Without domovoi — Plaid → internal category lookup
-const PLAID_TO_INTERNAL: Record<string, BudgetCategory> = {
-  "FOOD_AND_DRINK_GROCERIES":     "groceries",
-  "FOOD_AND_DRINK_RESTAURANTS":   "dining",
-  "TRANSPORTATION_GAS":           "transportation",
-  "ENTERTAINMENT_TV_AND_MOVIES":  "subscriptions",
-  // ... 100+ more entries; updates whenever Plaid renames its taxonomy
-};
+const QUOTE_HEADERS = [
+  /^-*\s*(On\s.+\swrote:{0,1})\s*-*$/m,    // EN
+  /^-*\s*(Le\s.+\sécrit\s?:{0,1})\s*-*$/m, // FR
+  /^\s*(Am\s.+schrieb.+):$/m,              // DE
+  /^(在[\s\S]+写道：)$/m,                    // ZH
+  /^(20[0-9]{2}\..+\s작성:)$/m,             // KO
+  // ...25 more locale variants
+];
 
-function categorize(t: PlaidTransaction): BudgetCategory {
-  return PLAID_TO_INTERNAL[t.personal_finance_category.detailed]
-      ?? "uncategorized";
+const SIGNATURE_SEPS = [
+  /^\s*-{2,4}$/, /^\s*_{2,4}$/, /^-- $/,
+  // ...18 patterns total
+];
+
+function classify(line: string) {
+  if (QUOTE_HEADERS.some(r => r.test(line)))
+    return "quote";
+  if (SIGNATURE_SEPS.some(r => r.test(line)))
+    return "signature";
+  return "body";
 }
+
+// "-- pricing tier --" → signature.
+// Body silently dropped.
 ```
+
+</td>
+<td>
 
 ```ts
-// With domovoi — your taxonomy directly, calibrated uncertainty as a typed result
-const verdict = await domovoi.classify(merchant, account.budget.categories);
+const fragment = await domovoi.classify(
+  line,
+  ["quote", "signature", "body"],
+);
 
-if (isClassified(verdict)) return verdict.value;
-if (isUncertain(verdict)) return verdict.top;            // with low-confidence flag
-return "uncategorized";                                  // Unknown — surface reason
+await match(fragment, {
+  classified: ({ value }) =>
+    emit(line, value),
+  uncertain:  ({ top, runnerUp }) =>
+    emit(line, top, { lowConfidence: runnerUp }),
+  unknown: () =>
+    emit(line, "body"),
+});
 ```
 
-The Plaid version locks you into Plaid's taxonomy (US-centric, ~100 categories, opaque updates) and a per-transaction cost. domovoi works against your taxonomy directly, surfaces uncertainty as a first-class typed result, and doesn't require a vendor data provider.
-
-**2. User-authored rules engines.** [Firefly III's TransactionRules](https://github.com/firefly-iii/firefly-iii/tree/main/app/TransactionRules) and [Actual Budget's rules system](https://github.com/actualbudget/actual/blob/master/packages/loot-core/src/server/accounts/transaction-rules.ts) punt categorization to the user — trigger/action conditions authored in a UI. Deterministic and customizable; maintenance grows with merchant variety; cold-start problem on every new merchant.
-
-**3. Trained classifiers.** GnuCash uses naive Bayes on transaction tokens; [smart_importer](https://github.com/beancount/smart_importer) for Beancount uses TF-IDF + sklearn. Real ML, handles patterns well after enough labeled data. Requires a labeled training set and a retraining cycle; emits an argmax label without calibrated uncertainty.
-
-domovoi sits in the same problem space but covers a gap none of the three do well: your taxonomy without vendor lock-in, no labeled training set, and uncertainty as a typed first-class result instead of a silent argmax.
+</td>
+</tr>
+</table>
 
 ---
 

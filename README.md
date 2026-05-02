@@ -39,7 +39,7 @@ Rules and trained classifiers have tackled this for decades. Rules break on edge
 
 domovoi is a single function call at the decision point. Unlike agent frameworks or workflow engines, it doesn't restructure how you build — it drops into existing code like any other dependency. Ask it, get a typed `Verdict`, continue.
 
-The `Verdict` is the core idea. Not a string, not a confidence score — one of three typed states: `Classified` when confident, `Uncertain` when the top answer falls below threshold, `Unknown` when no answer is possible. Uncertainty becomes a first-class value your type system understands, not a silent wrong answer. Everything around the `Verdict` stays deterministic.
+The `Verdict` is the core idea. Rather than a string or a confidence score, domovoi returns one of three typed states: `Classified` when confident, `Uncertain` when the top answer falls below threshold, `Unknown` when no answer is possible. Uncertainty becomes a first-class value your type system understands, not a silent wrong answer. Everything around the `Verdict` stays deterministic.
 
 ```tsx
 import { domovoi, match } from "@hourslabs/domovoi";
@@ -66,35 +66,44 @@ async function processTransaction(transaction: Transaction): Promise<void> {
 
 ---
 
-## vs. rules
+## Compared to existing patterns
 
-The same merchant categorization, written two ways:
+Categorizing free-form text without domovoi takes three realistic shapes in production:
 
-**Without domovoi — a regex pile:**
+**1. External vendor APIs.** Plaid's `personal_finance_category`, Stripe Issuing categories, Yodlee. The dominant pattern in OSS apps that integrate with banking — [Maybe Finance](https://github.com/maybe-finance/maybe), most YNAB importers. A static lookup table maps the vendor's taxonomy to yours:
 
 ```ts
-function categorize(merchant: string): string {
-  if (/^(NETFLIX|SPOTIFY|HULU|DISNEY\+)/i.test(merchant)) return "subscriptions";
-  if (/^(WHOLE FOODS|TRADER JOE|KROGER|SAFEWAY)/i.test(merchant)) return "groceries";
-  if (/^(SHELL|EXXON|CHEVRON|BP)/i.test(merchant)) return "transportation";
-  if (/^(UBER EATS|GRUBHUB|DOORDASH)/i.test(merchant)) return "dining";
-  if (/^(AMZN|AMAZON)/i.test(merchant)) return "shopping";  // wrong half the time
-  // ... 50+ rules later, "uncategorized" is still the most common bucket
-  return "uncategorized";
+// Without domovoi — Plaid → internal category lookup
+const PLAID_TO_INTERNAL: Record<string, BudgetCategory> = {
+  "FOOD_AND_DRINK_GROCERIES":     "groceries",
+  "FOOD_AND_DRINK_RESTAURANTS":   "dining",
+  "TRANSPORTATION_GAS":           "transportation",
+  "ENTERTAINMENT_TV_AND_MOVIES":  "subscriptions",
+  // ... 100+ more entries; updates whenever Plaid renames its taxonomy
+};
+
+function categorize(t: PlaidTransaction): BudgetCategory {
+  return PLAID_TO_INTERNAL[t.personal_finance_category.detailed]
+      ?? "uncategorized";
 }
 ```
 
-**With domovoi — typed Verdicts:**
-
 ```ts
+// With domovoi — your taxonomy directly, calibrated uncertainty as a typed result
 const verdict = await domovoi.classify(merchant, account.budget.categories);
 
 if (isClassified(verdict)) return verdict.value;
-if (isUncertain(verdict)) return verdict.top;       // with low-confidence flag
-return "uncategorized";                             // Unknown — surface reason
+if (isUncertain(verdict)) return verdict.top;            // with low-confidence flag
+return "uncategorized";                                  // Unknown — surface reason
 ```
 
-The first version grows linearly with merchant variety and silently misclassifies edge cases (`AMZN MKTP` could be groceries, shopping, or subscriptions depending on the cart). The second handles unfamiliar inputs as `Uncertain` instead of forcing a wrong guess, and stops growing when the model already covers them.
+The Plaid version locks you into Plaid's taxonomy (US-centric, ~100 categories, opaque updates) and a per-transaction cost. domovoi works against your taxonomy directly, surfaces uncertainty as a first-class typed result, and doesn't require a vendor data provider.
+
+**2. User-authored rules engines.** [Firefly III's TransactionRules](https://github.com/firefly-iii/firefly-iii/tree/main/app/TransactionRules) and [Actual Budget's rules system](https://github.com/actualbudget/actual/blob/master/packages/loot-core/src/server/accounts/transaction-rules.ts) punt categorization to the user — trigger/action conditions authored in a UI. Deterministic and customizable; maintenance grows with merchant variety; cold-start problem on every new merchant.
+
+**3. Trained classifiers.** GnuCash uses naive Bayes on transaction tokens; [smart_importer](https://github.com/beancount/smart_importer) for Beancount uses TF-IDF + sklearn. Real ML, handles patterns well after enough labeled data. Requires a labeled training set and a retraining cycle; emits an argmax label without calibrated uncertainty.
+
+domovoi sits in the same problem space but covers a gap none of the three do well: your taxonomy without vendor lock-in, no labeled training set, and uncertainty as a typed first-class result instead of a silent argmax.
 
 ---
 

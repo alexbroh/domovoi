@@ -49,8 +49,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          # actions/setup-node with `registry-url` writes ~/.npmrc using
-          # ${NODE_AUTH_TOKEN}; npm publish needs this env var set or the
-          # substitution leaves an empty token and the registry returns 404.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"

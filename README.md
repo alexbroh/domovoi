@@ -84,7 +84,7 @@ The same pattern appears across mainstream libraries: [Mozilla Readability](http
 <table>
 <tr><th>Before</th><th>With domovoi</th></tr>
 <tr>
-<td>
+<td valign="top">
 
 ```ts
 const QUOTE_HEADERS = [
@@ -114,7 +114,7 @@ function classify(line: string) {
 ```
 
 </td>
-<td>
+<td valign="top">
 
 ```ts
 const fragment = await domovoi.classify(

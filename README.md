@@ -4,33 +4,33 @@
 
 # domovoi
 
-**domovoi is an embedded intelligence-in-the-runtime — a primitive that lives inside your software.** Ask questions at the forks where rules don't fit; receive typed Verdicts; ship to production with bounded cost and full observability.
+**domovoi is an embedded intelligence-in-the-runtime. Not a service, but a primitive that lives inside your software.** Ask questions at the forks where rules don't fit; receive typed Verdicts; ship to production with bounded cost and full observability.
 
 ```ts
 import { domovoi, isClassified } from "domovoi";
 
-const review = "I love this product, it has changed my life for the better.";
-const verdict = await domovoi.classify(review, ["positive", "neutral", "negative"] as const);
+const prompt = "Rewrite this paragraph to be one sentence shorter.";
+const verdict = await domovoi.classify(prompt, ["trivial", "standard", "reasoning"] as const);
 
 if (isClassified(verdict)) {
-  verdict.value;        // → "positive"
-  verdict.probability;  // → 1.0
+  verdict.value;        // → "standard"
+  verdict.probability;  // → 0.92
 }
 ```
 
 **That's it.** The space you pass narrows the output type. No generics to write, no namespace import to remember.
 
-Run the same classifier against a few more reviews and you get this — verified output from `gpt-4o-mini`, taken straight from the smoke test in `examples/sentiment.ts`:
+Run the same classifier across a range of prompts and you get a tier per prompt. This is the pre-LLM dispatch decision every engineer building on top of these models has already written messy `if/else` logic for: should this go to the cheap model, the standard one, or the slow reasoning one?
 
 ```
-"I love this product, it has changed my life for the better."   →  positive (p=1.000)
-"It's fine, does what it says on the tin."                      →  positive (p=0.963)
-"Absolute garbage. Do not buy."                                 →  negative (p=1.000)
-"Hard to tell — works one day, broken the next."                →  neutral  (p=0.622)
-"The new keyboard layout took me a while but I really like it." →  positive (p=1.000)
+"What is 2+2?"                                            →  trivial    (p=0.99)
+"Rewrite this paragraph to be one sentence shorter."     →  standard   (p=0.92)
+"Plan a 3-step DB migration from Postgres to DynamoDB."  →  reasoning  (p=0.94)
+"Summarize this 2-page memo."                             →  standard   (p=0.81)
+"Help me debug — stack trace and three files attached."   →  uncertain  (standard vs reasoning, p=0.58)
 ```
 
-The fourth review is the interesting one. It's genuinely ambiguous, and the model says so — `p=0.622` is well above the noise floor but well below the threshold you'd want for an automated decision. That moderate-confidence state is what `Uncertain` exists to surface.
+The last row is the interesting one. Debugging tasks span the full range from "fix a typo" to "trace a race condition across three services," and the model can't always tell which one it's looking at. When it can't, you don't get a forced argmax. You get an `Uncertain` Verdict with both candidates named, and your dispatch code gets to decide whether to escalate, log, or fall back.
 
 > Today's release ships the Verdict primitive: typed classification with calibrated probability, plus structured failure modes for the cases the model can't handle. The next release adds `domovoi.scope` — ambient budget enforcement and cancellation across embedded calls. The [Roadmap](#roadmap) has the rest.
 

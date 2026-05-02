@@ -1,5 +1,5 @@
 /**
- * Public test helpers exposed via `@hours/domovoi/testing` subpath.
+ * Public test helpers exposed via `@hourslabs/domovoi/testing` subpath.
  *
  * `mockProvider({ behavior, capabilities?, id? })` builds a Provider for
  * tests without hitting a real LLM. Defaults work out-of-the-box for unit

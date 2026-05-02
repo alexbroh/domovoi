@@ -1,5 +1,5 @@
 {
-  "name": "@hours/domovoi",
+  "name": "@hourslabs/domovoi",
   "version": "0.1.0",
   "description": "Typed-uncertainty classification for TypeScript. Bind a domovoi to your code; receive Verdicts with calibrated probability and structured failure modes.",
   "type": "module",

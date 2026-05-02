@@ -9,28 +9,28 @@
 ```ts
 import { domovoi, isClassified } from "domovoi";
 
-const prompt = "Rewrite this paragraph to be one sentence shorter.";
-const verdict = await domovoi.classify(prompt, ["trivial", "standard", "reasoning"] as const);
+const query = "best running shoes for marathons";
+const verdict = await domovoi.classify(query, ["commercial", "informational", "navigational"] as const);
 
 if (isClassified(verdict)) {
-  verdict.value;        // → "standard"
-  verdict.probability;  // → 0.92
+  verdict.value;        // → "commercial"
+  verdict.probability;  // → 0.94
 }
 ```
 
 **That's it.** The space you pass narrows the output type. No generics to write, no namespace import to remember.
 
-Run the same classifier across a range of prompts and you get a tier per prompt. This is the pre-LLM dispatch decision every engineer building on top of these models has already written messy `if/else` logic for: should this go to the cheap model, the standard one, or the slow reasoning one?
+Run the same classifier across a range of search queries:
 
 ```
-"What is 2+2?"                                            →  trivial    (p=0.99)
-"Rewrite this paragraph to be one sentence shorter."     →  standard   (p=0.92)
-"Plan a 3-step DB migration from Postgres to DynamoDB."  →  reasoning  (p=0.94)
-"Summarize this 2-page memo."                             →  standard   (p=0.81)
-"Help me debug — stack trace and three files attached."   →  uncertain  (standard vs reasoning, p=0.58)
+"best running shoes for marathons"     →  commercial     (p=0.94)
+"what time is it in tokyo"             →  informational  (p=0.97)
+"facebook login"                       →  navigational   (p=0.99)
+"how to clean white sneakers"          →  informational  (p=0.91)
+"running"                              →  uncertain      (commercial vs informational, p=0.55)
 ```
 
-The last row is the interesting one. Debugging tasks span the full range from "fix a typo" to "trace a race condition across three services," and the model can't always tell which one it's looking at. When it can't, you don't get a forced argmax. You get an `Uncertain` Verdict with both candidates named, and your dispatch code gets to decide whether to escalate, log, or fall back.
+The last row is the interesting one. A bare "running" could be any of three intents — buying gear, learning technique, or opening the Running app. The model can't tell which, so you get an `Uncertain` Verdict with both top candidates named. Your search router decides what to do with it.
 
 > Today's release ships the Verdict primitive: typed classification with calibrated probability, plus structured failure modes for the cases the model can't handle. The next release adds `domovoi.scope` — ambient budget enforcement and cancellation across embedded calls. The [Roadmap](#roadmap) has the rest.
 

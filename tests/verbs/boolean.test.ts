@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { boolean as booleanVerb } from "../../src/verbs/boolean.js";
 import { mockProvider } from "../../src/testing/index.js";
+import { boolean as booleanVerb } from "../../src/verbs/boolean.js";
 import { isClassified, isUncertain, isUnknown } from "../../src/verdict.js";
 
 describe("domovoi.boolean — yes/no → boolean transform", () => {

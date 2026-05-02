@@ -16,16 +16,7 @@ import { decide, validateClassifierConfig, withDefaults } from "../engine/index.
 import { resolveDefaultProviders } from "../env.js";
 import { defaultTemplate } from "../prompt.js";
 import type { Provider } from "../providers/provider.js";
-import type {
-  Budget,
-  Classified,
-  Distribution,
-  Thresholds,
-  Uncertain,
-  Unknown,
-  UnknownReason,
-  Verdict,
-} from "../types.js";
+import type { Budget, Distribution, Thresholds, UnknownReason, Verdict } from "../types.js";
 
 type YesNo = "yes" | "no";
 
@@ -86,53 +77,35 @@ export async function boolean(
  * plain `boolean`. Distribution keys go from `{ yes, no }` → `{ true, false }`.
  */
 function toBooleanVerdict(v: Verdict<YesNo>): Verdict<boolean> {
-  if (v.kind === "classified") {
-    const out: Classified<boolean> = {
-      kind: "classified",
-      value: v.value === "yes",
-      probability: v.probability,
-      meta: v.meta,
-    };
-    return out;
+  switch (v.kind) {
+    case "classified":
+      return { ...v, value: v.value === "yes" };
+    case "uncertain":
+      return {
+        ...v,
+        top: v.top === "yes",
+        runnerUp: v.runnerUp === "yes",
+        distribution: rekey(v.distribution),
+      };
+    case "unknown":
+      return { ...v, reason: convertUnknownReason(v.reason) };
   }
-  if (v.kind === "uncertain") {
-    const out: Uncertain<boolean> = {
-      kind: "uncertain",
-      top: v.top === "yes",
-      runnerUp: v.runnerUp === "yes",
-      probability: v.probability,
-      distribution: rekey(v.distribution),
-      meta: v.meta,
-    };
-    return out;
+}
+
+function convertUnknownReason(reason: UnknownReason<YesNo>): UnknownReason<boolean> {
+  switch (reason.type) {
+    case "out_of_distribution":
+      return { ...reason, topIfRenormalized: reason.topIfRenormalized === "yes" };
+    case "chain_exhausted":
+      return { ...reason, lastDistribution: rekey(reason.lastDistribution) };
+    // Remaining variants don't reference T — payload is structurally identical
+    // between UnknownReason<YesNo> and UnknownReason<boolean>.
+    case "predicate_rejected":
+    case "provider_failure":
+    case "budget_exhausted":
+    case "cancelled":
+      return reason;
   }
-  // Unknown — only out_of_distribution and chain_exhausted reference T.
-  const reason = v.reason;
-  let outReason: UnknownReason<boolean>;
-  if (reason.type === "out_of_distribution") {
-    outReason = {
-      type: "out_of_distribution",
-      coverage: reason.coverage,
-      topIfRenormalized: reason.topIfRenormalized === "yes",
-      probabilityIfRenormalized: reason.probabilityIfRenormalized,
-    };
-  } else if (reason.type === "chain_exhausted") {
-    outReason = {
-      type: "chain_exhausted",
-      lastDistribution: rekey(reason.lastDistribution),
-      providersAttempted: reason.providersAttempted,
-    };
-  } else {
-    // The remaining variants don't reference T — runtime payload is structurally
-    // identical between UnknownReason<YesNo> and UnknownReason<boolean>.
-    outReason = reason as UnknownReason<boolean>;
-  }
-  const out: Unknown<boolean> = {
-    kind: "unknown",
-    reason: outReason,
-    meta: v.meta,
-  };
-  return out;
 }
 
 function rekey(d: Distribution<YesNo>): Distribution<boolean> {

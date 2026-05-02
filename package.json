@@ -1,9 +1,6 @@
 {
   "name": "@hours/domovoi",
   "version": "0.0.0",
-  "publishConfig": {
-    "access": "public"
-  },
   "description": "Typed-uncertainty classification for TypeScript. Bind a domovoi to your code; receive Verdicts with calibrated probability and structured failure modes.",
   "type": "module",
   "main": "./dist/index.js",

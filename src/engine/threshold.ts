@@ -63,9 +63,12 @@ function sortBySpaceProbability<T extends string>(
   d: Distribution<T>,
   space: readonly T[],
 ): { label: T; prob: number }[] {
+  // T extends string here, so Distribution<T>.probs resolves to the keyed-by-T
+  // branch of the conditional. The cast tells TS the conditional collapsed.
+  const probs = d.probs as { readonly [K in T]: number };
   const items: { label: T; prob: number }[] = space.map((label) => ({
     label,
-    prob: d.probs[label] as number,
+    prob: probs[label],
   }));
   items.sort((a, b) => b.prob - a.prob);
   return items;

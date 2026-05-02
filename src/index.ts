@@ -25,6 +25,7 @@ export type {
   Classified,
   Distribution,
   Filterable,
+  Label,
   PromptTemplate,
   ProviderCapabilities,
   SerializableError,

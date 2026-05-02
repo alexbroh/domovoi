@@ -5,17 +5,17 @@
  * Userspace can compose richer combinators (tap, getOrElse, etc.) in 1–3 lines.
  */
 
-import type { Classified, Filterable, Uncertain, Unknown, Verdict } from "./types.js";
+import type { Classified, Filterable, Label, Uncertain, Unknown, Verdict } from "./types.js";
 
-export function isClassified<T extends string>(v: Verdict<T>): v is Classified<T> {
+export function isClassified<T extends Label>(v: Verdict<T>): v is Classified<T> {
   return v.kind === "classified";
 }
 
-export function isUncertain<T extends string>(v: Verdict<T>): v is Uncertain<T> {
+export function isUncertain<T extends Label>(v: Verdict<T>): v is Uncertain<T> {
   return v.kind === "uncertain";
 }
 
-export function isUnknown<T extends string>(v: Verdict<T>): v is Unknown<T> {
+export function isUnknown<T extends Label>(v: Verdict<T>): v is Unknown<T> {
   return v.kind === "unknown";
 }
 
@@ -30,7 +30,7 @@ export function isUnknown<T extends string>(v: Verdict<T>): v is Unknown<T> {
  *   unknown:    ({ reason }) => routeUnknown(reason),
  * });
  */
-export function match<T extends string, R>(
+export function match<T extends Label, R>(
   v: Verdict<T>,
   handlers: {
     classified: (v: Classified<T>) => R;
@@ -62,7 +62,7 @@ export function match<T extends string, R>(
  *   return !DEPRECATED.has(pick);
  * })(verdict);
  */
-export function filter<T extends string>(pred: (v: Filterable<T>) => boolean) {
+export function filter<T extends Label>(pred: (v: Filterable<T>) => boolean) {
   return (v: Verdict<T>): Verdict<T> => {
     if (v.kind === "unknown") return v;
     if (pred(v)) return v;

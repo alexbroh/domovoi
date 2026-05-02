@@ -14,12 +14,26 @@ export type ProviderCapabilities = {
   readonly maxTopLogprobs: number;
 };
 
-export type Distribution<T extends string> = {
+/**
+ * The label-type domain a Verdict can range over. String for multi-class
+ * spaces (the dominant case) and boolean for the binary `domovoi.boolean()`
+ * verb. The engine and providers internally constrain to `string`; the
+ * widening here lets `Verdict<boolean>` exist as a public return type.
+ */
+export type Label = string | boolean;
+
+export type Distribution<T extends Label> = {
   /**
    * Renormalized probability per label. Missing labels (those whose first-token
    * fell outside provider's top-K) are assigned 0 by the engine.
+   *
+   * Branches on the label type so callers retain precise typing in both forms:
+   * for string spaces, `probs` is keyed by `T` directly; for boolean spaces,
+   * by `"true" | "false"` (since JS object keys coerce booleans to strings).
    */
-  readonly probs: { readonly [K in T]: number };
+  readonly probs: [T] extends [string]
+    ? { readonly [K in T]: number }
+    : { readonly true: number; readonly false: number };
   /**
    * Sum of in-space mass before renormalization, ∈ [0, 1].
    * Lower coverage indicates the model wanted to emit out-of-space tokens.
@@ -63,7 +77,7 @@ export type VerdictMeta = {
   readonly distributionSource: "logprobs" | "multi_sample";
 };
 
-export type UnknownReason<T extends string> =
+export type UnknownReason<T extends Label> =
   | {
       readonly type: "out_of_distribution";
       readonly coverage: number;
@@ -96,7 +110,7 @@ export type UnknownReason<T extends string> =
  * The classifier produced a confident result: `value` is one of the labels
  * in the decision space, with calibrated probability ≥ the `high` threshold.
  */
-export type Classified<T extends string> = {
+export type Classified<T extends Label> = {
   readonly kind: "classified";
   readonly value: T;
   /** Post-calibration probability of `value`, ∈ [0, 1]. */
@@ -108,7 +122,7 @@ export type Classified<T extends string> = {
  * The classifier identified a top candidate but its probability was below
  * the `high` threshold (or the margin requirement was not met).
  */
-export type Uncertain<T extends string> = {
+export type Uncertain<T extends Label> = {
   readonly kind: "uncertain";
   readonly top: T;
   /** Post-calibration probability of `top`, ∈ [0, 1]. */
@@ -123,7 +137,7 @@ export type Uncertain<T extends string> = {
  * out_of_distribution / chain_exhausted / predicate_rejected / provider_failure
  * / budget_exhausted / cancelled.
  */
-export type Unknown<T extends string> = {
+export type Unknown<T extends Label> = {
   readonly kind: "unknown";
   readonly reason: UnknownReason<T>;
   readonly meta: VerdictMeta;
@@ -134,10 +148,10 @@ export type Unknown<T extends string> = {
  * narrow, or use the type guards (`isClassified`, `isUncertain`, `isUnknown`),
  * or use the `match` helper for exhaustive handling.
  */
-export type Verdict<T extends string> = Classified<T> | Uncertain<T> | Unknown<T>;
+export type Verdict<T extends Label> = Classified<T> | Uncertain<T> | Unknown<T>;
 
 /** Verdict variants that carry a top-class candidate (Classified or Uncertain). */
-export type Filterable<T extends string> = Classified<T> | Uncertain<T>;
+export type Filterable<T extends Label> = Classified<T> | Uncertain<T>;
 
 /**
  * Thresholds discriminated by space length:

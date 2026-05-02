@@ -62,7 +62,7 @@ async function moderateBatch(): Promise<void> {
 
     const moderationAction = match(toxicityVerdict, {
       classified: ({ value, probability }) =>
-        value === "yes"
+        value
           ? `BLOCKED (toxicity p=${probability.toFixed(2)}); notify author`
           : `PUBLISHED (toxicity p=${probability.toFixed(2)})`,
       uncertain: ({ probability }) =>

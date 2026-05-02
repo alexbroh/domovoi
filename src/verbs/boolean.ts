@@ -1,12 +1,13 @@
 /**
  * domovoi.boolean(input, question, opts?) — binary one-shot.
  *
- * Returns `Verdict<"yes" | "no">` (R4). Defaults a binary deadband:
- * `{ high: 0.7, low: 0.3, coverageMin: 0.3 }` (S2) — illustrative only.
+ * Returns `Verdict<boolean>`. Internally the engine still classifies over the
+ * string space `["yes", "no"]` (matches LLM first-token tokenization cleanly);
+ * a small transform at the verb boundary maps `"yes" | "no"` → `boolean` so
+ * the public surface is idiomatic TS.
  *
- * Returns the labels in user-given conventional order for prompts:
- * ["yes", "no"]. Engine uses user-given order for cache key + prompt rendering
- * per K3.
+ * Defaults a binary deadband: `{ high: 0.7, low: 0.3, coverageMin: 0.3 }` (S2)
+ * — illustrative only.
  */
 
 import { type Cache, memoryCache } from "../cache.js";
@@ -15,7 +16,16 @@ import { decide, validateClassifierConfig, withDefaults } from "../engine/index.
 import { resolveDefaultProviders } from "../env.js";
 import { defaultTemplate } from "../prompt.js";
 import type { Provider } from "../providers/provider.js";
-import type { Budget, Thresholds, Verdict } from "../types.js";
+import type {
+  Budget,
+  Classified,
+  Distribution,
+  Thresholds,
+  Uncertain,
+  Unknown,
+  UnknownReason,
+  Verdict,
+} from "../types.js";
 
 type YesNo = "yes" | "no";
 
@@ -36,7 +46,7 @@ export async function boolean(
   input: string,
   question: string,
   opts?: BooleanOptions,
-): Promise<Verdict<YesNo>> {
+): Promise<Verdict<boolean>> {
   const providers =
     opts?.providers !== undefined && opts.providers.length > 0
       ? opts.providers
@@ -66,5 +76,68 @@ export async function boolean(
     ...(opts?.budget !== undefined ? { budget: opts.budget } : {}),
   });
 
-  return decide(input, config, opts?.signal);
+  const verdict = await decide(input, config, opts?.signal);
+  return toBooleanVerdict(verdict);
+}
+
+/**
+ * Map `Verdict<"yes" | "no">` → `Verdict<boolean>`. The engine works on string
+ * labels; this transform is the verb-boundary adapter so the public type is a
+ * plain `boolean`. Distribution keys go from `{ yes, no }` → `{ true, false }`.
+ */
+function toBooleanVerdict(v: Verdict<YesNo>): Verdict<boolean> {
+  if (v.kind === "classified") {
+    const out: Classified<boolean> = {
+      kind: "classified",
+      value: v.value === "yes",
+      probability: v.probability,
+      meta: v.meta,
+    };
+    return out;
+  }
+  if (v.kind === "uncertain") {
+    const out: Uncertain<boolean> = {
+      kind: "uncertain",
+      top: v.top === "yes",
+      runnerUp: v.runnerUp === "yes",
+      probability: v.probability,
+      distribution: rekey(v.distribution),
+      meta: v.meta,
+    };
+    return out;
+  }
+  // Unknown — only out_of_distribution and chain_exhausted reference T.
+  const reason = v.reason;
+  let outReason: UnknownReason<boolean>;
+  if (reason.type === "out_of_distribution") {
+    outReason = {
+      type: "out_of_distribution",
+      coverage: reason.coverage,
+      topIfRenormalized: reason.topIfRenormalized === "yes",
+      probabilityIfRenormalized: reason.probabilityIfRenormalized,
+    };
+  } else if (reason.type === "chain_exhausted") {
+    outReason = {
+      type: "chain_exhausted",
+      lastDistribution: rekey(reason.lastDistribution),
+      providersAttempted: reason.providersAttempted,
+    };
+  } else {
+    // The remaining variants don't reference T — runtime payload is structurally
+    // identical between UnknownReason<YesNo> and UnknownReason<boolean>.
+    outReason = reason as UnknownReason<boolean>;
+  }
+  const out: Unknown<boolean> = {
+    kind: "unknown",
+    reason: outReason,
+    meta: v.meta,
+  };
+  return out;
+}
+
+function rekey(d: Distribution<YesNo>): Distribution<boolean> {
+  return {
+    probs: { true: d.probs.yes, false: d.probs.no },
+    coverage: d.coverage,
+  };
 }

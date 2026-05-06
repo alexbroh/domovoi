@@ -167,3 +167,38 @@ describe("T11 — scope() and bind() signature preservation", () => {
     domovoi.scope({ budget: { tokens: 1000, onExceeded: "throw" } }, () => 1);
   });
 });
+
+describe("T12 — distribution() / Samples<T> typing", () => {
+  test("distribution() infers Samples<T> from the verdict's label union", async () => {
+    const { distribution } = await import("../src/testing/distribution.js");
+    const dist = await distribution(() => domovoi.classify("input", ["a", "b", "c"] as const), {
+      n: 1,
+      concurrency: 1,
+    });
+    // coverage takes the literal label union, not bare string
+    dist.coverage("a");
+    dist.coverage("b");
+    dist.coverage("c");
+    // @ts-expect-error - "x" is not in the label union
+    dist.coverage("x");
+  });
+
+  test("confidenceInterval returns readonly tuple [number, number]", async () => {
+    const { distribution } = await import("../src/testing/distribution.js");
+    const dist = await distribution(() => domovoi.classify("input", ["a"] as const), {
+      n: 1,
+      concurrency: 1,
+    });
+    const ci = dist.confidenceInterval("a");
+    expectTypeOf(ci).toEqualTypeOf<readonly [number, number]>();
+  });
+
+  test("modeKind returns the three-variant union", async () => {
+    const { distribution } = await import("../src/testing/distribution.js");
+    const dist = await distribution(() => domovoi.classify("input", ["a"] as const), {
+      n: 1,
+      concurrency: 1,
+    });
+    expectTypeOf(dist.modeKind()).toEqualTypeOf<"classified" | "uncertain" | "unknown">();
+  });
+});

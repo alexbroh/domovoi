@@ -1,13 +1,25 @@
 /**
  * Public test helpers exposed via `@hourslabs/domovoi/testing` subpath.
  *
- * `mockProvider({ behavior, capabilities?, id? })` builds a Provider for
- * tests without hitting a real LLM. Defaults work out-of-the-box for unit
- * tests of engine logic, threshold semantics, and fallback chains.
+ * Two primitives:
+ *
+ *   - `mockProvider({ behavior })` — Provider stub for unit tests of engine
+ *     logic without hitting a real LLM.
+ *   - `distribution(fn, { n })` — distribution-shaped assertions on AI
+ *     behavior, with Wilson confidence intervals.
  */
 
 import type { Provider, SampleOptions } from "../providers/provider.js";
 import type { Distribution, ProviderCapabilities } from "../types.js";
+
+export {
+  type ConfidenceLevel,
+  type DistributionOptions,
+  distribution,
+  type Samples,
+  type StabilityAssertion,
+  wilsonInterval,
+} from "./distribution.js";
 
 const DEFAULT_CAPABILITIES: ProviderCapabilities = {
   distributionSource: "logprobs",

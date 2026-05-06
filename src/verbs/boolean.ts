@@ -101,6 +101,7 @@ function convertCause(cause: UnknownVerdictCause<YesNo>): UnknownVerdictCause<bo
     case "predicate_rejected":
     case "provider_failure":
     case "budget_exhausted":
+    case "budget_exceeded":
     case "cancelled":
       return cause;
   }

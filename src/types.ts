@@ -108,6 +108,11 @@ export type UnknownVerdictCause<T extends Label> =
       readonly scope: "per_call_timeout" | "chain_timeout" | "max_calls";
     }
   | {
+      readonly type: "budget_exceeded";
+      readonly spent: number;
+      readonly limit: number;
+    }
+  | {
       readonly type: "cancelled";
       readonly reason?: string;
     };

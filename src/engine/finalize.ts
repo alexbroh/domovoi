@@ -4,7 +4,8 @@
  * (every-provider-errored vs last-provider-uncertain).
  */
 
-import { BudgetExhaustedError } from "../errors.js";
+import type { BudgetMode } from "../budget-tracker.js";
+import { BudgetExceededError, BudgetExhaustedError } from "../errors.js";
 import type { Distribution, Unknown, Verdict } from "../types.js";
 import { buildBudgetExhaustedVerdict, deserializeForAggregate } from "./abort.js";
 import type { DecideConfig } from "./config.js";
@@ -35,6 +36,27 @@ export function makeCancelledFromMeta<T extends string>(
   return {
     kind: "unknown",
     reason: { type: "cancelled", reason },
+    meta: buildMetaForFailure(meta),
+  };
+}
+
+/**
+ * Build the terminal verdict for scope-budget exhaustion. Under
+ * `BudgetMode.graceful` returns `Unknown { budget_exceeded }`; under
+ * `"throw"` mode throws `BudgetExceededError` for the caller to handle.
+ */
+export function makeBudgetExceededVerdict<T extends string>(
+  meta: MetaBuilder,
+  spent: number,
+  limit: number,
+  mode: BudgetMode,
+): Unknown<T> {
+  if (mode === "throw") {
+    throw new BudgetExceededError({ spent, limit });
+  }
+  return {
+    kind: "unknown",
+    reason: { type: "budget_exceeded", spent, limit },
     meta: buildMetaForFailure(meta),
   };
 }

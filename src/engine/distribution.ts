@@ -42,9 +42,11 @@ export function computeProviderCacheKey<T extends string>(
 export function mergeSignals(
   userSignal: AbortSignal | undefined,
   timeoutSignal: AbortSignal,
+  scopeSignal?: AbortSignal,
 ): AbortSignal {
   const signals: AbortSignal[] = [timeoutSignal];
-  if (userSignal !== undefined) signals.push(userSignal);
+  if (userSignal) signals.push(userSignal);
+  if (scopeSignal) signals.push(scopeSignal);
   return AbortSignal.any(signals);
 }
 

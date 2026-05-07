@@ -37,10 +37,14 @@ export type ErrorCode =
   | "provider_server_error"
   | "provider_malformed_response"
   | "invalid_distribution"
-  // BudgetExhaustedError — runtime
+  // BudgetExhaustedError — runtime (operational: time / call-count)
   | "per_call_timeout"
   | "chain_timeout"
-  | "max_calls";
+  | "max_calls"
+  // BudgetExceededError — runtime (scope token budget)
+  | "tokens_exceeded"
+  // ConfigError — scope budget validation
+  | "invalid_scope_budget";
 
 export class DomovoiError extends Error {
   readonly code: string;
@@ -85,6 +89,29 @@ export class BudgetExhaustedError extends DomovoiError {
     this.scope = options.scope;
     this.attemptedProviders = options.attemptedProviders;
     this.elapsedMs = options.elapsedMs;
+  }
+}
+
+/**
+ * Thrown when scope token budget is exceeded under `onExceeded: "throw"` mode.
+ * Distinct from `BudgetExhaustedError` (operational time / call-count budgets):
+ * this is the cost ceiling for a `domovoi.scope({ budget: { tokens } })` block.
+ *
+ * Default mode is `"graceful"` — classify returns
+ * `Unknown { reason: { type: "budget_exceeded", spent, limit } }` instead.
+ */
+export class BudgetExceededError extends DomovoiError {
+  readonly spent: number;
+  readonly limit: number;
+
+  constructor(options: { spent: number; limit: number; cause?: unknown }) {
+    super(`Scope budget exceeded: ${options.spent} / ${options.limit} tokens`, {
+      code: "tokens_exceeded",
+      cause: options.cause,
+    });
+    this.name = "BudgetExceededError";
+    this.spent = options.spent;
+    this.limit = options.limit;
   }
 }
 

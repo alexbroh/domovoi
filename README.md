@@ -303,6 +303,192 @@ controller.abort("budget_exceeded");
 
 ---
 
+## Scopes
+
+A `domovoi.classify` call deep in a request handler needs three things from its environment: a cost ceiling, a cancellation signal, and observability. Threading them through every layer of your stack as arguments is tedious. Scopes make them ambient.
+
+```ts
+import { domovoi } from "@hourslabs/domovoi";
+
+await domovoi.scope(
+  { budget: { tokens: 50_000 }, signal: req.signal, tracer },
+  async () => {
+    // Every classify inside this scope inherits the budget, the signal,
+    // and the tracer.
+    await processBatch(items);
+  },
+);
+```
+
+If `processBatch` calls helpers that classify, they share the same running budget. When the budget hits zero, the next classify returns `Unknown { reason: { type: "budget_exceeded", spent, limit } }` rather than spend more.
+
+### Predictable cost
+
+The failure mode that makes finance teams nervous about LLM-backed code is the runaway loop — an infinite call quietly burning through a month of budget in an afternoon. Scope budgets are the circuit breaker:
+
+```ts
+await domovoi.scope({ budget: { tokens: 10_000 } }, async () => {
+  for (const item of items) {
+    const v = await domovoi.classify(item.text, ["a", "b"]);
+    if (v.kind === "unknown" && v.reason.type === "budget_exceeded") break;
+    // ...
+  }
+});
+```
+
+Default mode is graceful: classify returns `Unknown` when the limit is hit. For hard-fail behavior, set `onExceeded: "throw"` — classify throws `BudgetExceededError` instead.
+
+### Scope-level cancellation
+
+Scope signals combine with per-call signals via `AbortSignal.any`. Either firing aborts the in-flight provider call.
+
+```ts
+const ac = new AbortController();
+setTimeout(() => ac.abort("user navigated away"), 5_000);
+
+await domovoi.scope({ signal: ac.signal }, async () => {
+  await domovoi.classify(input, space);
+});
+```
+
+### Observability
+
+Pass a `Tracer` and domovoi emits one span per provider call, following the [OpenTelemetry GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for `gen_ai.*` fields and reserving `domovoi.*` for verdict-shaped concepts:
+
+| Attribute | Carries |
+|---|---|
+| `gen_ai.provider.name` | `"openai"`, `"anthropic"`, etc. |
+| `gen_ai.request.model` | requested model id |
+| `gen_ai.usage.input_tokens` / `output_tokens` | per-call token counts |
+| `domovoi.verdict.kind` | `"classified"` / `"uncertain"` / `"unknown"` |
+| `domovoi.verdict.value` | selected label when classified |
+| `domovoi.cache.hit` | whether the call was served from cache |
+
+A short adapter wires your existing OpenTelemetry tracer in:
+
+```ts
+import { trace } from "@opentelemetry/api";
+import type { Tracer } from "@hourslabs/domovoi";
+
+const otel = trace.getTracer("my-app");
+const tracer: Tracer = {
+  startSpan: (name, attrs) => otel.startSpan(name, { attributes: attrs }),
+};
+```
+
+Datadog, Honeycomb, Grafana Cloud, and Dynatrace populate their AI Observability views from `gen_ai.*` attributes automatically.
+
+### Resolution order
+
+Each `domovoi.classify` call resolves its budget, signal, and tracer in this order:
+
+1. Per-call option, e.g. `domovoi.classify(..., { signal })`
+2. Nearest enclosing `domovoi.scope`
+3. No enforcement, no tracing, no budget
+
+`AbortSignal` is the one exception — per-call and scope signals combine, rather than the per-call value overriding the scope.
+
+Nested scopes inherit unspecified fields from the parent. A child `budget` overrides the parent and starts a fresh counter. A child `tracer` overrides. A child `signal` combines.
+
+### Bind: scope across async boundaries
+
+Queue workers, cron jobs, and `setTimeout` callbacks run *outside* the original async context. `domovoi.bind` captures the current scope and re-applies it on later invocation:
+
+```ts
+await domovoi.scope({ budget: { tokens: 50_000 }, tracer }, async () => {
+  const job = domovoi.bind(async (item: Item) => {
+    return domovoi.classify(item.text, ["a", "b"]);
+  });
+
+  // Queue runs `job` later, in a different async context. The captured
+  // scope is re-applied: budget and tracer still flow through.
+  await queue.push(job, items);
+});
+```
+
+Mirrors Node's `AsyncLocalStorage.bind` and OpenTelemetry's `context.bind`. Outside any scope, `domovoi.bind(fn)` returns `fn` unchanged.
+
+### Backward compatibility
+
+Calls outside any scope are unchanged: no enforcement, no tracing, no budget. Existing code keeps working without changes.
+
+---
+
+## Testing
+
+Two primitives in `@hourslabs/domovoi/testing` cover the testing surface:
+
+- `mockProvider({ behavior })` — a `Provider` stub for unit-testing engine logic without hitting a real LLM.
+- `distribution(fn, { n })` — runs `n` real samples and returns Wilson-CI-backed assertions about behavior stability.
+
+### mockProvider — unit tests without an LLM
+
+Most engine and threshold logic doesn't need a real model. `mockProvider` lets you supply a deterministic Distribution per call:
+
+```ts
+import { mockProvider } from "@hourslabs/domovoi/testing";
+
+const stub = mockProvider({
+  behavior: () => ({ probs: { yes: 0.92, no: 0.08 }, coverage: 0.95 }),
+});
+
+const c = domovoi.classifier({
+  space: ["yes", "no"] as const,
+  thresholds: { high: 0.7, low: 0.3 },
+  providers: [stub],
+});
+
+const v = await c("input that the mock ignores");
+// v.kind === "classified", v.value === "yes" — deterministic, no network
+```
+
+Useful for threshold logic, provider-chain fallback, calibrator math, error-handling paths — anything that's about *engine* behavior rather than *model* behavior. Zero LLM calls; runs anywhere.
+
+### distribution — assert against AI behavior
+
+Single-sample assertions on AI behavior are meaningless: the model varies between runs. `distribution()` runs `n` real samples and turns "the classifier should reliably tag greetings" into a one-liner backed by a Wilson confidence interval:
+
+```ts
+import { distribution } from "@hourslabs/domovoi/testing";
+
+const dist = await distribution(
+  () => domovoi.classify("hello there", ["greeting", "request"] as const),
+  { n: 100 },
+);
+
+dist.coverage("greeting");           // 0.94
+dist.confidenceInterval("greeting"); // [0.88, 0.98] — 95% Wilson CI
+dist.modeKind();                      // "classified" | "uncertain" | "unknown"
+
+dist.expectStable({
+  minCoverage: 0.9,        // OR per-label: { greeting: 0.9, request: 0.5 }
+  maxUncertain: 0.05,
+  maxUnknown: 0.02,
+});
+```
+
+Default concurrency is `Math.min(n, 5)` — `n=100` finishes in ~6 seconds against a 300ms p50 provider, well under typical rate limits. Pass `concurrency: 1` to serialize when running multiple `distribution()` tests in parallel.
+
+`distribution()` makes `n` real LLM calls. At gpt-4o-mini and `n=100`, that's ~$0.005 per test — belongs in `test:e2e`, not the per-commit unit tier.
+
+---
+
+## Cost
+
+A `domovoi.classify` call on gpt-4o-mini costs about $0.00004 — roughly 1/25 of a cent. ~180 input tokens (system prompt + label space + your input) at $0.15/M, plus ~15 output tokens at $0.60/M.
+
+| Calls / month | Cost    |
+|---------------|---------|
+| 100k          | $4      |
+| 10M           | $400    |
+| 1B            | $40,000 |
+
+The default `memoryCache` deduplicates byte-exact-match inputs within a process — significant savings on workloads with repeated inputs (log severity tags, predefined enums, boilerplate replies), little impact on free-form user content where every input is unique. The `Cache` extension point lets you back domovoi with any store for cross-process or persistent caching.
+
+Reach for deterministic tools instead when: syntactic problems with stable rules (URL parsing, format validation, tokenizers), very high volume with thin margins (100B+ ad impressions / day), or hard-real-time loops where a cache miss (~300ms p50) blows the SLA.
+
+---
+
 ## Calibration
 
 Three closed-form scaling factories from `@hourslabs/domovoi/calibration`:

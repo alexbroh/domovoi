@@ -94,6 +94,7 @@ const UNKNOWN_REASON_DESCRIPTIONS = {
   provider_failure: "every model errored — operational problem, retry later",
   predicate_rejected: "post-hoc validity check failed",
   budget_exhausted: "exceeded budget mid-call",
+  budget_exceeded: "scope token budget exhausted",
   cancelled: "request was cancelled",
 } as const;
 

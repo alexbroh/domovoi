@@ -122,3 +122,83 @@ describe("T10 — literal narrowing one-liner (RESEARCH.md Pass 2 SOTA bar)", ()
     expectTypeOf(v).resolves.toEqualTypeOf<Verdict<boolean>>();
   });
 });
+
+describe("T11 — scope() and bind() signature preservation", () => {
+  test("scope() returns whatever fn returns (sync number)", () => {
+    const result = domovoi.scope({}, () => 42);
+    // Async-or-sync return: number | Promise<number>
+    expectTypeOf(result).toEqualTypeOf<number | Promise<number>>();
+  });
+
+  test("scope() with async fn returns Promise<R>", () => {
+    const result = domovoi.scope({}, async () => "hello");
+    // async () => Promise<string>, so the union widens to Promise<string> | Promise<string>
+    expectTypeOf(result).toEqualTypeOf<string | Promise<string>>();
+  });
+
+  test("bind() preserves zero-arg function signature", () => {
+    const fn = () => 42;
+    const bound = domovoi.bind(fn);
+    expectTypeOf(bound).toEqualTypeOf<typeof fn>();
+  });
+
+  test("bind() preserves single-arg function signature", () => {
+    const fn = (x: number) => x * 2;
+    const bound = domovoi.bind(fn);
+    expectTypeOf(bound).toEqualTypeOf<typeof fn>();
+    expectTypeOf(bound(5)).toEqualTypeOf<number>();
+  });
+
+  test("bind() preserves async multi-arg function signature", () => {
+    const fn = async (x: string, y: number): Promise<boolean> => x.length > y;
+    const bound = domovoi.bind(fn);
+    expectTypeOf(bound).toEqualTypeOf<typeof fn>();
+  });
+
+  test("currentScope returns ResolvedScope | undefined", () => {
+    const s = domovoi.currentScope();
+    expectTypeOf(s).toMatchTypeOf<{ signal?: AbortSignal } | undefined>();
+  });
+
+  test("ScopeOptions accepts partial fields", () => {
+    domovoi.scope({}, () => 1);
+    domovoi.scope({ budget: { tokens: 1000 } }, () => 1);
+    domovoi.scope({ signal: new AbortController().signal }, () => 1);
+    domovoi.scope({ budget: { tokens: 1000, onExceeded: "throw" } }, () => 1);
+  });
+});
+
+describe("T12 — distribution() / Samples<T> typing", () => {
+  test("distribution() infers Samples<T> from the verdict's label union", async () => {
+    const { distribution } = await import("../src/testing/distribution.js");
+    const dist = await distribution(() => domovoi.classify("input", ["a", "b", "c"] as const), {
+      n: 1,
+      concurrency: 1,
+    });
+    // coverage takes the literal label union, not bare string
+    dist.coverage("a");
+    dist.coverage("b");
+    dist.coverage("c");
+    // @ts-expect-error - "x" is not in the label union
+    dist.coverage("x");
+  });
+
+  test("confidenceInterval returns readonly tuple [number, number]", async () => {
+    const { distribution } = await import("../src/testing/distribution.js");
+    const dist = await distribution(() => domovoi.classify("input", ["a"] as const), {
+      n: 1,
+      concurrency: 1,
+    });
+    const ci = dist.confidenceInterval("a");
+    expectTypeOf(ci).toEqualTypeOf<readonly [number, number]>();
+  });
+
+  test("modeKind returns the three-variant union", async () => {
+    const { distribution } = await import("../src/testing/distribution.js");
+    const dist = await distribution(() => domovoi.classify("input", ["a"] as const), {
+      n: 1,
+      concurrency: 1,
+    });
+    expectTypeOf(dist.modeKind()).toEqualTypeOf<"classified" | "uncertain" | "unknown">();
+  });
+});

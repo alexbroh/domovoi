@@ -81,15 +81,15 @@
     "tiktoken": "^1.0.22"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.18.3",
-    "@biomejs/biome": "^2.4.16",
+    "@arethetypeswrong/cli": "^0.18.4",
+    "@biomejs/biome": "^2.5.2",
     "@changesets/cli": "^2.31.0",
     "@types/node": "^25.9.1",
-    "@vitest/coverage-v8": "^4.1.8",
-    "knip": "^6.15.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "knip": "^6.24.0",
     "publint": "^0.3.21",
     "tsup": "^8.5.1",
-    "tsx": "^4.22.4",
+    "tsx": "^4.23.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5"
   },

@@ -11,9 +11,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Hoisted mock so the SDK constructor is replaced before openai() is imported.
 const createMock = vi.hoisted(() => vi.fn());
 
+const openaiCtorArgs = vi.hoisted(() => ({ last: undefined as unknown }));
+
 vi.mock("openai", () => {
   class MockOpenAI {
     chat = { completions: { create: createMock } };
+    constructor(options: unknown) {
+      openaiCtorArgs.last = options;
+    }
   }
   return { default: MockOpenAI, OpenAI: MockOpenAI };
 });
@@ -188,6 +193,46 @@ describe("openai adapter (cl100k tokenizer-aware)", () => {
     await expect(provider.sample("input", ["yes", "no"], SAMPLE_OPTS)).rejects.toThrow(
       /missing first-token logprobs/,
     );
+  });
+});
+
+describe("retry integration", () => {
+  it("constructs the SDK client with its internal retries disabled", () => {
+    openai("gpt-4o-mini", { apiKey: "test" });
+    // The governor owns retry policy exclusively; the SDK's silent default
+    // (2 transport retries) would compound with it and bypass the buckets.
+    expect(openaiCtorArgs.last).toMatchObject({ maxRetries: 0 });
+  });
+
+  beforeEach(() => {
+    createMock.mockReset();
+  });
+
+  it("retries a 429 and succeeds within the same sample() call", async () => {
+    vi.useFakeTimers();
+    try {
+      createMock
+        .mockRejectedValueOnce(Object.assign(new Error("rate limited"), { status: 429 }))
+        .mockResolvedValueOnce(logprobResponse([{ token: "yes", logprob: -0.1 }]));
+
+      const provider = openai("gpt-4o-mini", { apiKey: "test", retries: { maxAttempts: 2 } });
+      const pending = provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+      await vi.runAllTimersAsync();
+      const { distribution } = await pending;
+      expect(distribution.probs.yes).toBeGreaterThan(0);
+      expect(createMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not retry a 401", async () => {
+    createMock.mockRejectedValue(Object.assign(new Error("bad key"), { status: 401 }));
+    const provider = openai("gpt-4o-mini", { apiKey: "test", retries: { maxAttempts: 3 } });
+    await expect(provider.sample("input", ["yes", "no"], SAMPLE_OPTS)).rejects.toMatchObject({
+      code: "provider_unauthorized",
+    });
+    expect(createMock).toHaveBeenCalledTimes(1);
   });
 });
 

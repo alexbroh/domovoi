@@ -264,6 +264,23 @@ providers: [ollama("llama-3.1-70b"), openai("gpt-4o")]
 
 ---
 
+## Retries and Rate Limits
+
+Every provider factory accepts per-provider request governance:
+
+```tsx
+const resilient = openai("gpt-4o-mini", {
+  retries: { maxAttempts: 3 },              // exponential full-jitter backoff
+  rateLimit: { rpm: 5_000, tpm: 200_000 },  // token buckets on this instance
+});
+```
+
+Retries cover transient failures only (`provider_network`, `provider_rate_limit`, `provider_server_error`) — malformed responses and auth failures never retry. Backoff sleeps and rate-limit waits are always bounded by the engine's per-call deadline and your `AbortSignal`: a retry can never extend a timeout. Rate limits are enforced per HTTP request, so `anthropic("claude-haiku-4-5-20251001", { samples: 3 })` consumes three `rpm` slots per classify call, and a transiently failing sample retries individually before counting against coverage. `tpm` uses a deficit model — no pre-call estimation; reported usage debits the bucket, and sustained heavy usage self-throttles.
+
+The buckets live on the provider *instance*: classifiers sharing one instance share its limits, and there is no hidden global registry. Construct a provider once and reuse it.
+
+---
+
 ## Anthropic
 
 `anthropic()` runs Claude models — default `claude-haiku-4-5-20251001`, reading `ANTHROPIC_API_KEY`:
@@ -559,12 +576,11 @@ Custom backends implement the public `Cache` interface. Redis, SQLite, and Cloud
 
 ## Current Limitations
 
-1. **Single adapter family.** OpenAI Chat plus OpenAI-compatible runtimes (Ollama, vLLM, LM Studio, Together, Fireworks). Anthropic native and Gemini are on the roadmap.
+1. **Two adapter families.** OpenAI Chat (plus OpenAI-compatible runtimes — Ollama, vLLM, LM Studio, Together, Fireworks) and Anthropic native. Gemini is on the roadmap.
 2. **In-memory cache only.** Process-local; serverless cold starts begin empty. Persistent backends are implementable today via the public `Cache` interface; first-party Redis, SQLite, and KV packages are planned.
 3. **Identity calibrator default.** Provide `temperatureScaling(T)` or `plattScaling({ a, b })` with parameters you fit on your eval set for real calibration. Automated fitting (`Calibrator.fit(eval)`) is planned.
-4. **No per-provider retries.** Chain fallback covers between-provider failures; per-provider retries are planned.
-5. **No streaming.** `.stream` on `Classifier` is planned; `.batch` ships today.
-6. **No few-shot prompting.** Input passes verbatim; wrap with your own example-injection if needed.
+4. **No streaming.** `.stream` on `Classifier` is planned; `.batch` ships today.
+5. **No few-shot prompting.** Input passes verbatim; wrap with your own example-injection if needed.
 
 ---
 

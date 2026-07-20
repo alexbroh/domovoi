@@ -10,6 +10,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { canonicalizeProviderThrow, ProviderError } from "../../errors.js";
 import { renderSystemPrompt, renderUserPrompt } from "../../prompt.js";
 import type { ProviderCapabilities, TokenUsage } from "../../types.js";
+import type { RequestGovernor } from "../governor.js";
 import type { Provider, ProviderPricing, SampleOptions, SampleOutcome } from "../provider.js";
 import { aggregateVerbalizedSamples, parseVerbalizedReply } from "./aggregate.js";
 
@@ -31,6 +32,8 @@ export type AnthropicAdapterArgs = {
   readonly samples: number;
   /** Attached to the returned Provider; the engine computes USD from it. */
   readonly pricing?: ProviderPricing;
+  /** Retry + rate-limit enforcement, applied per sample request. */
+  readonly governor: RequestGovernor;
 };
 
 export function buildAnthropicAdapter(args: AnthropicAdapterArgs): Provider {
@@ -59,7 +62,16 @@ export function buildAnthropicAdapter(args: AnthropicAdapterArgs): Provider {
       // error using the first rejection.
       const settled = await Promise.allSettled(
         Array.from({ length: args.samples }, () =>
-          requestOneReply(args.client, args.modelId, system, user, temperature, opts),
+          args.governor.execute(
+            () =>
+              requestOneReply(args.client, args.modelId, system, user, temperature, opts).catch(
+                (thrown) => {
+                  throw canonicalizeProviderThrow(thrown);
+                },
+              ),
+            opts.signal,
+            opts.timeoutMs,
+          ),
         ),
       );
       const fulfilled = settled.filter(
@@ -77,6 +89,7 @@ export function buildAnthropicAdapter(args: AnthropicAdapterArgs): Provider {
         ),
       );
       const usage = sumUsage(fulfilled.map((result) => result.value));
+      if (usage !== undefined) args.governor.reconcile(usage);
       return usage === undefined ? { distribution } : { distribution, usage };
     },
   };

@@ -12,9 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Hoisted mock so the SDK constructor is replaced before anthropic() is imported.
 const createMock = vi.hoisted(() => vi.fn());
 
+const anthropicCtorArgs = vi.hoisted(() => ({ last: undefined as unknown }));
+
 vi.mock("@anthropic-ai/sdk", () => {
   class MockAnthropic {
     messages = { create: createMock };
+    constructor(options: unknown) {
+      anthropicCtorArgs.last = options;
+    }
   }
   return { default: MockAnthropic, Anthropic: MockAnthropic };
 });
@@ -189,6 +194,11 @@ describe("anthropic adapter", () => {
     expect(request.system).toContain('"positive"');
   });
 
+  it("constructs the SDK client with its internal retries disabled", () => {
+    anthropic(DEFAULT_ANTHROPIC_MODEL, { apiKey: "test" });
+    expect(anthropicCtorArgs.last).toMatchObject({ maxRetries: 0 });
+  });
+
   it("uses the default model and exposes samples in configHash", () => {
     const provider = anthropic();
     expect(provider.modelId).toBe(DEFAULT_ANTHROPIC_MODEL);
@@ -225,6 +235,27 @@ describe("anthropic adapter", () => {
     expect(distribution.probs.positive).toBeGreaterThan(0.8);
     // Usage sums the two billed survivors only.
     expect(usage).toEqual({ inputTokens: 80, outputTokens: 24 });
+  });
+
+  it("retries a transiently failing sample individually before counting it failed", async () => {
+    vi.useFakeTimers();
+    try {
+      createMock
+        .mockResolvedValueOnce(textReply("positive", 95))
+        .mockRejectedValueOnce(Object.assign(new Error("hiccup"), { status: 500 }))
+        .mockResolvedValueOnce(textReply("positive", 90))
+        .mockResolvedValueOnce(textReply("positive", 92)); // the retry of sample 2
+
+      const provider = anthropic(DEFAULT_ANTHROPIC_MODEL, { retries: { maxAttempts: 2 } });
+      const pending = provider.sample("input", SPACE, SAMPLE_OPTS);
+      await vi.runAllTimersAsync();
+      const { distribution } = await pending;
+      // All three samples land in-space: the failed one recovered on retry.
+      expect(distribution.coverage).toBe(1);
+      expect(createMock).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("canonicalizes SDK errors into ProviderError when every sample fails", async () => {

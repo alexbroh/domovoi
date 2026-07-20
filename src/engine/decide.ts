@@ -34,7 +34,12 @@ import {
   DEFAULT_PER_CALL_TIMEOUT_MS,
   type DecideConfig,
 } from "./config.js";
-import { computeProviderCacheKey, loadDistribution, mergeSignals } from "./distribution.js";
+import {
+  computeProviderCacheKey,
+  type LoadedSample,
+  loadDistribution,
+  mergeSignals,
+} from "./distribution.js";
 import {
   type AttemptOutcome,
   handleDistributionError,
@@ -47,7 +52,13 @@ import {
   makeCancelledFromMeta,
 } from "./finalize.js";
 import { fireAndForget } from "./hooks.js";
-import { buildMeta, type MetaBuilder, makeMetaBuilder } from "./meta.js";
+import {
+  buildMeta,
+  type MetaBuilder,
+  makeMetaBuilder,
+  recordSpend,
+  recordUnreportedSpend,
+} from "./meta.js";
 import { applyThresholds } from "./threshold.js";
 
 export async function decide<T extends string>(
@@ -160,10 +171,10 @@ function firstAbortReason(...signals: (AbortSignal | undefined)[]): string | und
 }
 
 /**
- * Rough token estimator. v0.2 doesn't surface real provider-reported counts
- * yet (planned for v0.3 alongside Anthropic adapter); ~4 chars/token is the
- * standard OpenAI English-text rule of thumb. Budget is a safety rail, not
- * a precision tool — overshooting by ~10% is acceptable.
+ * Fallback estimator for calls whose provider reported no usage
+ * (`SampleOutcome.usage` absent). ~4 chars/token is the standard OpenAI
+ * English-text rule of thumb. Budget is a safety rail, not a precision
+ * tool — overshooting by ~10% is acceptable.
  */
 function estimateInputTokens(formattedInput: string): number {
   return Math.ceil(formattedInput.length / 4);
@@ -200,9 +211,9 @@ async function attemptProvider<T extends string>(
     const timeoutSignal = AbortSignal.timeout(perCallTimeoutMs);
     const mergedSignal = mergeSignals(userSignal, timeoutSignal, scope?.signal);
 
-    let distribution: Distribution<T>;
+    let outcome: LoadedSample<T>;
     try {
-      distribution = await loadDistribution(
+      outcome = await loadDistribution(
         provider,
         formattedInput,
         config,
@@ -226,16 +237,36 @@ async function attemptProvider<T extends string>(
       );
     }
 
+    const distribution = outcome.distribution;
     span.setAttribute("domovoi.cache.hit", meta.cacheHit);
 
     if (!meta.cacheHit) {
-      const inputTokens = estimateInputTokens(formattedInput);
-      const outputTokens = estimateOutputTokens();
-      span.setAttribute("gen_ai.usage.input_tokens", inputTokens);
-      span.setAttribute("gen_ai.usage.output_tokens", outputTokens);
+      // Backend-reported usage when the adapter surfaced it; estimates
+      // otherwise, flagged so dashboards can tell the difference. Only
+      // reported usage flows into Verdict.meta.cost, and only when this
+      // caller initiated the underlying request — in-flight riders see the
+      // real numbers on their span but never attribute the spend twice.
+      const usage = outcome.usage ?? {
+        inputTokens: estimateInputTokens(formattedInput),
+        outputTokens: estimateOutputTokens(),
+      };
+      span.setAttribute("gen_ai.usage.input_tokens", usage.inputTokens);
+      span.setAttribute("gen_ai.usage.output_tokens", usage.outputTokens);
+      if (outcome.sharedFromInFlight) {
+        span.setAttribute("domovoi.usage.shared", true);
+        if (outcome.usage === undefined) span.setAttribute("domovoi.usage.estimated", true);
+      } else if (outcome.usage === undefined) {
+        span.setAttribute("domovoi.usage.estimated", true);
+        // A real, billed call went unreported: a partial token/USD sum
+        // would silently under-report, so usd is withheld for this Verdict.
+        recordUnreportedSpend(meta);
+      } else {
+        const callUsd = recordSpend(meta, provider, outcome.usage);
+        if (callUsd !== undefined) span.setAttribute("gen_ai.usage.cost_usd", callUsd);
+      }
       // Charge before enforce — under "throw" mode, enforce() can throw
       // BudgetExceededError which the outer catch records on the span.
-      scope?.budgetTracker?.charge(inputTokens + outputTokens);
+      scope?.budgetTracker?.charge(usage.inputTokens + usage.outputTokens);
       scope?.budgetTracker?.enforce();
     }
 

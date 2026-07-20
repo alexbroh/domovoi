@@ -109,7 +109,7 @@ describe("openai adapter (cl100k tokenizer-aware)", () => {
       ]),
     );
     const provider = openai("gpt-4o-mini", { apiKey: "sk-test" });
-    const dist = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+    const { distribution: dist } = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
     // In-space mass = 0.7 + 0.2 = 0.9; renormalized: yes=0.78, no=0.22
     expect(dist.coverage).toBeCloseTo(0.9, 6);
     expect(dist.probs.yes).toBeCloseTo(0.7 / 0.9, 6);
@@ -124,7 +124,7 @@ describe("openai adapter (cl100k tokenizer-aware)", () => {
       ]),
     );
     const provider = openai("gpt-4o-mini", { apiKey: "sk-test" });
-    const dist = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+    const { distribution: dist } = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
     expect(dist.coverage).toBe(0);
     expect(dist.probs.yes).toBe(0);
     expect(dist.probs.no).toBe(0);
@@ -191,6 +191,32 @@ describe("openai adapter (cl100k tokenizer-aware)", () => {
   });
 });
 
+describe("usage reporting", () => {
+  beforeEach(() => {
+    createMock.mockReset();
+  });
+
+  it("treats a partial usage object as no usage — never NaN into cost", async () => {
+    const response = logprobResponse([{ token: "yes", logprob: -0.1 }]);
+    response.usage = { prompt_tokens: 120 }; // completion_tokens missing (compat backend)
+    createMock.mockResolvedValue(response);
+
+    const provider = openai("gpt-4o-mini", { apiKey: "test" });
+    const { usage } = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+    expect(usage).toBeUndefined();
+  });
+
+  it("maps a complete usage object onto TokenUsage", async () => {
+    const response = logprobResponse([{ token: "yes", logprob: -0.1 }]);
+    response.usage = { prompt_tokens: 120, completion_tokens: 8, total_tokens: 128 };
+    createMock.mockResolvedValue(response);
+
+    const provider = openai("gpt-4o-mini", { apiKey: "test" });
+    const { usage } = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+    expect(usage).toEqual({ inputTokens: 120, outputTokens: 8 });
+  });
+});
+
 describe("ollama adapter (string-based fallback)", () => {
   beforeEach(() => {
     createMock.mockReset();
@@ -218,7 +244,7 @@ describe("ollama adapter (string-based fallback)", () => {
       ]),
     );
     const provider = ollama("llama-3.1-70b");
-    const dist = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+    const { distribution: dist } = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
     expect(dist.coverage).toBeCloseTo(1.0, 6);
     expect(dist.probs.yes).toBeCloseTo(0.6, 6);
     expect(dist.probs.no).toBeCloseTo(0.4, 6);

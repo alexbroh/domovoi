@@ -10,17 +10,29 @@ import {
   InFlight,
   serializeCachedValue,
 } from "../cache.js";
-import type { Provider } from "../providers/provider.js";
-import type { Distribution } from "../types.js";
+import type { Provider, SampleOutcome } from "../providers/provider.js";
 import { DEFAULT_PER_CALL_TIMEOUT_MS, type DecideConfig } from "./config.js";
 import type { MetaBuilder } from "./meta.js";
 
 /**
  * Process-wide in-flight dedup. Concurrent calls with the same cache key
  * share a single Promise; the *raw* Distribution is shared, while each caller
- * still applies its own calibrator and thresholds.
+ * still applies its own calibrator and thresholds. Reported usage is shared
+ * too (the numbers are real for every rider), but only the initiating caller
+ * may attribute the spend to its Verdict — the call happened once and must
+ * be paid for once. `LoadedSample.sharedFromInFlight` carries that split.
  */
-const globalInFlight = new InFlight<Distribution<string>>();
+const globalInFlight = new InFlight<SampleOutcome<string>>();
+
+/**
+ * A `SampleOutcome` plus how the engine obtained it: `sharedFromInFlight`
+ * marks riders on another caller's in-flight request, whose usage informs
+ * spans but must not be double-attributed to cost or double-emitted as
+ * `cost_usd`.
+ */
+export type LoadedSample<T extends string> = SampleOutcome<T> & {
+  readonly sharedFromInFlight: boolean;
+};
 
 export function computeProviderCacheKey<T extends string>(
   provider: Provider,
@@ -57,18 +69,18 @@ export async function loadDistribution<T extends string>(
   meta: MetaBuilder,
   signal: AbortSignal,
   cacheKey: string,
-): Promise<Distribution<T>> {
+): Promise<LoadedSample<T>> {
   const cached = await config.cache.get(cacheKey);
   if (cached !== undefined) {
     const parsed = deserializeCachedValue<T>(cached);
     if (parsed !== undefined) {
       meta.cacheHit = true;
-      return parsed;
+      return { distribution: parsed, sharedFromInFlight: false };
     }
     // Schema mismatch → fresh sample.
   }
   const fresh = await fetchFresh(provider, formattedInput, config, signal, cacheKey);
-  await config.cache.set(cacheKey, serializeCachedValue(fresh));
+  await config.cache.set(cacheKey, serializeCachedValue(fresh.distribution));
   return fresh;
 }
 
@@ -78,15 +90,18 @@ async function fetchFresh<T extends string>(
   config: DecideConfig<T>,
   signal: AbortSignal,
   cacheKey: string,
-): Promise<Distribution<T>> {
-  return globalInFlight.run(cacheKey, () =>
-    provider.sample<T>(formattedInput, config.space, {
+): Promise<LoadedSample<T>> {
+  let initiatedHere = false;
+  const outcome = (await globalInFlight.run(cacheKey, () => {
+    initiatedHere = true;
+    return provider.sample<T>(formattedInput, config.space, {
       template: config.template,
       temperature: config.temperature,
       timeoutMs: config.budget?.perCallTimeoutMs ?? DEFAULT_PER_CALL_TIMEOUT_MS,
       signal,
-    }),
-  ) as Promise<Distribution<T>>;
+    });
+  })) as SampleOutcome<T>;
+  return { ...outcome, sharedFromInFlight: !initiatedHere };
 }
 
 /**

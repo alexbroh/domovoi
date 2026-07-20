@@ -37,10 +37,12 @@ export type {
   ProviderCapabilities,
   SerializableError,
   Thresholds,
+  TokenUsage,
   Uncertain,
   Unknown,
   UnknownVerdictCause,
   Verdict,
+  VerdictCost,
   VerdictMeta,
 } from "./types.js";
 export type { BooleanOptions } from "./verbs/boolean.js";

@@ -2,7 +2,7 @@
  * domovoi — typed-uncertainty classification for TypeScript.
  *
  * Public API entry point. Subpaths:
- *   - `@hourslabs/domovoi/providers` — Provider factories and interface (openai, ollama, openaiCompat).
+ *   - `@hourslabs/domovoi/providers` — Provider factories and interface (openai, ollama, openaiCompat, anthropic).
  *   - `@hourslabs/domovoi/calibration` — Calibrator factories (identity, temperatureScaling, plattScaling).
  *   - `@hourslabs/domovoi/testing` — mockProvider for unit tests.
  */

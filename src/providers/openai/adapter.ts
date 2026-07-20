@@ -81,7 +81,9 @@ export function buildAdapter(args: AdapterArgs): Provider {
         const params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
           model: args.modelId,
           messages,
-          temperature: opts.temperature,
+          // Deferred default resolves to 0: logprobs adapters read the
+          // first-token distribution, which needs no sampling variance.
+          temperature: opts.temperature ?? 0,
           logprobs: true,
           top_logprobs: Math.min(args.capabilities.maxTopLogprobs, Math.max(space.length * 2, 5)),
           // One label is one short word; 16 tokens is enough headroom.

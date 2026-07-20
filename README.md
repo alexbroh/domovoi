@@ -264,6 +264,29 @@ providers: [ollama("llama-3.1-70b"), openai("gpt-4o")]
 
 ---
 
+## Anthropic
+
+`anthropic()` runs Claude models — default `claude-haiku-4-5-20251001`, reading `ANTHROPIC_API_KEY`:
+
+```tsx
+import { anthropic } from "@hourslabs/domovoi/providers";
+
+const router = domovoi.classifier({
+  name: "tickets",
+  space: ["billing", "technical", "account", "other"],
+  providers: [anthropic()],
+  thresholds: { high: 0.75 },
+});
+```
+
+The Anthropic API exposes no logprobs, so the provider builds its Distribution differently: it draws **3 samples per call** (configurable via `samples`), each verbalizing a label plus a 0–100 confidence, and aggregates them. Capabilities report `distributionSource: "multi_sample"` and `coverageMeasurement: "approximate"` in `verdict.meta`.
+
+What the extra samples buy is **disagreement detection**. When the samples agree, the aggregate lands around 0.9; when they split 2-of-1, it lands around 0.62 — and split answers are empirically far less accurate than unanimous ones. Set `thresholds: { high: 0.75 }` so splits route to `Uncertain` instead of silently passing: that turns the provider's internal disagreement into your escalation path. `samples: 1` is the cheap mode — a single verbalized-confidence call, no disagreement signal.
+
+Anthropic providers mix freely in chains with OpenAI-flavored ones; each provider's Distribution is built by its own mechanism and calibrated/thresholded identically downstream.
+
+---
+
 ## Configuration
 
 ```bash

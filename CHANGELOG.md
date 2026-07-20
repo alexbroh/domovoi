@@ -1,5 +1,12 @@
 # @hourslabs/domovoi
 
+## 0.3.0
+
+### Minor Changes
+
+- 8519c1c: Add the Anthropic provider: `anthropic(model?, opts?)` with multi-sample verbalized-confidence distributions (default Haiku 4.5, 3 samples per call), disagreement-aware aggregation, and `samples` option. Multi-sample providers can now use non-identity calibrators (the v0 restriction is lifted), providers can contribute a `configHash` to the cache key, and sampling temperature defers to a provider-appropriate default when unset.
+- 4db3ff0: Cost as observability: providers accept `pricing: { inputPerMTok, outputPerMTok }` and every Verdict carries `meta.cost` — backend-reported token usage summed across all provider calls (fallbacks included), with `usd` when every usage-reporting provider has pricing; absent on pure cache hits. Spans upgrade to real usage (`gen_ai.usage.*`, estimates flagged `domovoi.usage.estimated`) and emit `gen_ai.usage.cost_usd` per priced call; the scope budget now charges real tokens when reported. Breaking for custom Provider implementations: `sample()` returns `{ distribution, usage? }` instead of a bare `Distribution`; `mockProvider` accepts both shapes.
+
 ## 0.2.0
 
 ### Minor Changes

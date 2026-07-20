@@ -16,18 +16,25 @@ type ProviderErrorRecord = {
 /**
  * Mutable accumulator used by `decide()`. Only the helpers in this file should
  * mutate it; callers append to `providersAttempted` / `providerErrors` and
- * flip `cacheHit` directly.
+ * flip `cacheHit` directly. The spend fields must go through `recordSpend()` /
+ * `recordUnreportedSpend()` — direct mutation skips the pricing and
+ * `usdComplete` bookkeeping.
  */
 export type MetaBuilder = {
   readonly providersAttempted: string[];
   readonly providerErrors: ProviderErrorRecord[];
   readonly startedAtMs: number;
   cacheHit: boolean;
-  /** Reported-usage totals across every provider call made for this Verdict. */
+  /** Reported-usage input/output token totals across every provider call made for this Verdict. */
   spentInputTokens: number;
   spentOutputTokens: number;
+  /** USD total; only meaningful while `usdComplete` holds. */
   spentUsd: number;
-  /** False once any usage-reporting provider lacked pricing — USD is then omitted. */
+  /**
+   * False once any real call's spend could not be fully priced — a
+   * usage-reporting provider without pricing, or a billed call that
+   * reported no usage at all. USD is then omitted from `meta.cost`.
+   */
   usdComplete: boolean;
   /** True once any provider call reported usage — gates `meta.cost` emission. */
   sawReportedUsage: boolean;
@@ -66,6 +73,15 @@ export function recordSpend(
     builder.spentUsd += usd;
   }
   return usd;
+}
+
+/**
+ * Mark that a real, billed provider call reported no usage. Its spend is
+ * unknowable, so any USD total would under-report — `usd` is withheld for
+ * this Verdict while the reported token totals remain.
+ */
+export function recordUnreportedSpend(builder: MetaBuilder): void {
+  builder.usdComplete = false;
 }
 
 function buildCost(builder: MetaBuilder): VerdictCost | undefined {

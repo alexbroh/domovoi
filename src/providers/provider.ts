@@ -37,7 +37,7 @@ export type SampleOptions = {
  * USD pricing the engine uses to compute `Verdict.meta.cost.usd` and the
  * `gen_ai.usage.cost_usd` span attribute. Quoted per million tokens — the
  * unit providers publish. The engine does the multiplication; adapters only
- * declare the numbers. Omitted pricing means USD is simply not emitted.
+ * declare the numbers. Omitted pricing means USD is not emitted.
  */
 export type ProviderPricing = {
   readonly inputPerMTok: number;
@@ -79,7 +79,7 @@ export interface Provider {
    * provider has no such options.
    */
   readonly configHash?: string;
-  /** See [`ProviderPricing`]; omit when USD cost should not be emitted. */
+  /** See `ProviderPricing`; omit when USD cost should not be emitted. */
   readonly pricing?: ProviderPricing;
 
   /**

@@ -102,7 +102,7 @@ export type VerdictMeta = {
   readonly coverageQuality: "exact" | "approximate" | "none";
   /** How the answering provider constructed its Distribution. */
   readonly distributionSource: "logprobs" | "multi_sample";
-  /** See [`VerdictCost`]. Absent on pure cache hits. */
+  /** See `VerdictCost`. Absent on pure cache hits. */
   readonly cost?: VerdictCost;
 };
 

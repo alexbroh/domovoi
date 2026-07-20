@@ -107,6 +107,17 @@ describe("aggregateVerbalizedSamples", () => {
     expect(distribution.coverage).toBe(0);
   });
 
+  it("resolves exact-case replies to their own label in case-variant spaces", () => {
+    const caseVariantSpace = ["Billing", "billing"] as const;
+    const distribution = aggregateVerbalizedSamples(caseVariantSpace, [
+      { label: "Billing", confidence: 90 },
+      { label: "Billing", confidence: 95 },
+      { label: "billing", confidence: 80 },
+    ]);
+    // Exact matches must not be re-routed by the case-insensitive fallback.
+    expect(distribution.probs.Billing).toBeGreaterThan(distribution.probs.billing);
+  });
+
   it("matches labels case-insensitively without widening the space", () => {
     const distribution = aggregateVerbalizedSamples(SPACE, [{ label: "Positive", confidence: 80 }]);
     expect(distribution.probs.positive).toBeCloseTo(0.8);
@@ -202,7 +213,21 @@ describe("anthropic adapter", () => {
     expect(() => anthropic(DEFAULT_ANTHROPIC_MODEL, { samples })).toThrow(ConfigError);
   });
 
-  it("canonicalizes SDK errors into ProviderError", async () => {
+  it("aggregates the survivors when one of K samples fails, penalizing coverage", async () => {
+    createMock
+      .mockResolvedValueOnce(textReply("positive", 95))
+      .mockRejectedValueOnce(new Error("transient 500"))
+      .mockResolvedValueOnce(textReply("positive", 90));
+
+    const { distribution, usage } = await anthropic().sample("input", SPACE, SAMPLE_OPTS);
+    // The failed sample counts against coverage like an unparseable reply.
+    expect(distribution.coverage).toBeCloseTo(2 / 3);
+    expect(distribution.probs.positive).toBeGreaterThan(0.8);
+    // Usage sums the two billed survivors only.
+    expect(usage).toEqual({ inputTokens: 80, outputTokens: 24 });
+  });
+
+  it("canonicalizes SDK errors into ProviderError when every sample fails", async () => {
     createMock.mockRejectedValue(new Error("connection reset"));
     await expect(anthropic().sample("input", SPACE, SAMPLE_OPTS)).rejects.toBeInstanceOf(
       ProviderError,

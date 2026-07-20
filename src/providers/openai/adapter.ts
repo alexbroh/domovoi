@@ -157,6 +157,15 @@ function mapFirstTokenIds<T extends string>(
 
 function usageFromResponse(response: OpenAI.Chat.ChatCompletion): TokenUsage | undefined {
   const reported = response.usage;
-  if (reported === undefined) return undefined;
+  // Compat backends (vLLM, proxies) sometimes return partial usage objects
+  // despite the SDK types; a non-finite field would poison the engine's
+  // cost accumulator, so partial usage counts as no usage.
+  if (
+    reported === undefined ||
+    !Number.isFinite(reported.prompt_tokens) ||
+    !Number.isFinite(reported.completion_tokens)
+  ) {
+    return undefined;
+  }
   return { inputTokens: reported.prompt_tokens, outputTokens: reported.completion_tokens };
 }

@@ -140,24 +140,6 @@ export function validateProviderChain(
   }
 }
 
-/**
- * Validate calibrator vs provider chain capabilities at construction.
- * Multi-sample providers reject non-identity calibrators.
- */
-export function validateCalibratorCompatibility(
-  calibratorIsIdentity: boolean,
-  providers: ReadonlyArray<{ readonly id: string; readonly capabilities: ProviderCapabilities }>,
-): void {
-  if (calibratorIsIdentity) return;
-  const multiSample = providers.find((p) => p.capabilities.distributionSource === "multi_sample");
-  if (multiSample) {
-    throw new ConfigError(
-      `Provider ${multiSample.id} uses distributionSource: "multi_sample"; non-identity calibrators are not supported on multi-sample providers in v0. Use 'identity' calibrator or remove the multi-sample provider from the chain.`,
-      { code: "incompatible_calibrator" },
-    );
-  }
-}
-
 const SUM_TOLERANCE = 0.001;
 
 /**

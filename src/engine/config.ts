@@ -8,13 +8,12 @@
 
 import { type Cache, memoryCache } from "../cache.js";
 import type { Calibrator } from "../calibration/index.js";
-import { identity, isIdentityCalibrator } from "../calibration/index.js";
+import { identity } from "../calibration/index.js";
 import type { ProviderError } from "../errors.js";
 import { defaultTemplate } from "../prompt.js";
 import type { Provider } from "../providers/provider.js";
 import type { Budget, PromptTemplate, Thresholds } from "../types.js";
 import {
-  validateCalibratorCompatibility,
   validateClassifierName,
   validateProviderChain,
   validateSpace,
@@ -52,7 +51,11 @@ export type DecideConfig<T extends string> = {
    * a cache miss. Empty string when the provider has no such options.
    */
   readonly providerConfigHash: string;
-  readonly temperature: number;
+  /**
+   * `undefined` defers to the provider-appropriate default (logprobs: 0,
+   * multi-sample: 1) — see `SampleOptions.temperature`.
+   */
+  readonly temperature: number | undefined;
 };
 
 type DecideConfigInput<T extends string> = {
@@ -88,7 +91,8 @@ export function withDefaults<T extends string>(input: DecideConfigInput<T>): Dec
     ...(input.onProviderError !== undefined ? { onProviderError: input.onProviderError } : {}),
     ...(input.hooks !== undefined ? { hooks: input.hooks } : {}),
     providerConfigHash: input.providerConfigHash ?? "",
-    temperature: 0,
+    // Deferred to the provider default; no verb exposes temperature today.
+    temperature: undefined,
   };
 }
 
@@ -115,7 +119,6 @@ export function validateClassifierConfig<T extends string>(
   validateSpace(input.space);
   validateProviderChain(input.providers, input.space.length);
   validateThresholds(input.thresholds, input.space.length);
-  validateCalibratorCompatibility(isIdentityCalibrator(input.calibrator), input.providers);
   for (const provider of input.providers) {
     provider.validate?.(input.space);
   }

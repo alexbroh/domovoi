@@ -33,8 +33,8 @@ export function computeProviderCacheKey<T extends string>(
     tokenizerId: provider.tokenizerId,
     templateHash: config.template.templateHash,
     decisionSpace: config.space,
-    temperature: config.temperature,
-    providerConfigHash: config.providerConfigHash,
+    temperature: config.temperature ?? null,
+    providerConfigHash: provider.configHash ?? config.providerConfigHash,
     formattedInput,
   });
 }

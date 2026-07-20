@@ -12,7 +12,14 @@ import type { Distribution, PromptTemplate, ProviderCapabilities } from "../type
 
 export type SampleOptions = {
   readonly template: PromptTemplate;
-  readonly temperature: number;
+  /**
+   * Sampling temperature. `undefined` means "provider-appropriate
+   * default": logprobs adapters read the first-token distribution from a
+   * single deterministic completion (0), while multi-sample adapters need
+   * sampling variance for the disagreement signal (1). An explicit value
+   * is always honored as given.
+   */
+  readonly temperature: number | undefined;
   readonly seed?: number;
   /**
    * Advisory timeout; the engine has already enforced it via the merged
@@ -41,6 +48,13 @@ export interface Provider {
   readonly modelId: string;
   readonly tokenizerId: string;
   readonly capabilities: ProviderCapabilities;
+  /**
+   * Stable hash of provider options that change the Distribution for the
+   * same `(model, input, space)` — e.g. the multi-sample count. Mixed into
+   * the cache key so changing such an option is a cache miss. Omit when the
+   * provider has no such options.
+   */
+  readonly configHash?: string;
 
   /**
    * Optional eager check fired once per provider during

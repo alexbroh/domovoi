@@ -30,7 +30,8 @@ type CacheKeyInputs = {
    * therefore the model output — so it must change the cache key.
    */
   readonly decisionSpace: readonly string[];
-  readonly temperature: number;
+  /** `null` when deferred to the provider default (distinct from explicit 0). */
+  readonly temperature: number | null;
   /**
    * Stable hash of provider options that affect Distribution shape (e.g.
    * `multiSampleN`). Empty string for providers without such options.

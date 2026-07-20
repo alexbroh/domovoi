@@ -11,6 +11,7 @@ import { ConfigError, canonicalizeProviderThrow, ProviderError } from "../../err
 import { renderSystemPrompt, renderUserPrompt } from "../../prompt.js";
 import { buildLogitBias, findFirstTokenCollision, type Tokenizer } from "../../tokenizer.js";
 import type { ProviderCapabilities, TokenUsage } from "../../types.js";
+import type { RequestGovernor } from "../governor.js";
 import type { Provider, ProviderPricing, SampleOptions, SampleOutcome } from "../provider.js";
 import { buildDistributionByStringMatch, buildDistributionByTokenId } from "./distribution.js";
 
@@ -31,6 +32,8 @@ export type AdapterArgs = {
   readonly tokenizer?: Tokenizer;
   /** Attached to the returned Provider; the engine computes USD from it. */
   readonly pricing?: ProviderPricing;
+  /** Retry + rate-limit enforcement for the request this adapter makes. */
+  readonly governor: RequestGovernor;
 };
 
 export function buildAdapter(args: AdapterArgs): Provider {
@@ -81,6 +84,8 @@ export function buildAdapter(args: AdapterArgs): Provider {
 
       let response: OpenAI.Chat.ChatCompletion;
       try {
+        // Canonicalize inside the governed call so the retry policy sees
+        // typed codes (429 -> provider_rate_limit etc.), not raw SDK errors.
         const params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
           model: args.modelId,
           messages,
@@ -99,7 +104,13 @@ export function buildAdapter(args: AdapterArgs): Provider {
           timeout: opts.timeoutMs,
         };
         if (opts.signal !== undefined) requestOpts.signal = opts.signal;
-        response = await args.client.chat.completions.create(params, requestOpts);
+        response = await args.governor.execute(
+          () =>
+            args.client.chat.completions.create(params, requestOpts).catch((thrown) => {
+              throw canonicalizeProviderThrow(thrown);
+            }),
+          opts.signal,
+        );
       } catch (err) {
         throw canonicalizeProviderThrow(err);
       }
@@ -122,6 +133,7 @@ export function buildAdapter(args: AdapterArgs): Provider {
           ? buildDistributionByTokenId(space, tokenLogprobs, inSpaceFirstTokenIds, tokenizer)
           : buildDistributionByStringMatch(space, tokenLogprobs);
       const usage = usageFromResponse(response);
+      if (usage !== undefined) args.governor.reconcile(usage);
       return usage === undefined ? { distribution } : { distribution, usage };
     },
   };

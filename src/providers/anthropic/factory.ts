@@ -9,6 +9,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ConfigError } from "../../errors.js";
 import type { ProviderCapabilities } from "../../types.js";
+import {
+  type RateLimitOptions,
+  RequestGovernor,
+  type RetryOptions,
+  validatedRateLimitOptions,
+  validatedRetryOptions,
+} from "../governor.js";
 import { validatedPricing } from "../pricing.js";
 import type { Provider, ProviderPricing } from "../provider.js";
 import { buildAnthropicAdapter } from "./adapter.js";
@@ -53,6 +60,18 @@ export type AnthropicProviderOptions = {
    * usage (and therefore cost) sums across all `samples` calls.
    */
   readonly pricing?: ProviderPricing;
+  /**
+   * Transient-failure retry policy, applied per sample request — one
+   * flaky sample among `samples` retries individually before counting
+   * against coverage. Always bounded by the engine's per-call deadline.
+   */
+  readonly retries?: RetryOptions;
+  /**
+   * Request/token-per-minute budgets shared by every classifier holding
+   * this provider *instance*. Note each classify call issues `samples`
+   * requests — size `rpm` accordingly.
+   */
+  readonly rateLimit?: RateLimitOptions;
 };
 
 const MULTI_SAMPLE_CAPABILITIES: ProviderCapabilities = {
@@ -102,6 +121,10 @@ export function anthropic(
     capabilities: MULTI_SAMPLE_CAPABILITIES,
     client,
     samples,
+    governor: new RequestGovernor(
+      opts?.retries === undefined ? undefined : validatedRetryOptions(opts.retries),
+      opts?.rateLimit === undefined ? undefined : validatedRateLimitOptions(opts.rateLimit),
+    ),
     ...(opts?.pricing !== undefined ? { pricing: validatedPricing(opts.pricing) } : {}),
   });
 }

@@ -264,6 +264,23 @@ providers: [ollama("llama-3.1-70b"), openai("gpt-4o")]
 
 ---
 
+## Retries and Rate Limits
+
+Every provider factory accepts per-provider request governance:
+
+```tsx
+const resilient = openai("gpt-4o-mini", {
+  retries: { maxAttempts: 3 },              // exponential full-jitter backoff
+  rateLimit: { rpm: 5_000, tpm: 200_000 },  // token buckets on this instance
+});
+```
+
+Retries cover transient failures only (`provider_network`, `provider_rate_limit`, `provider_server_error`) — malformed responses and auth failures never retry. Backoff sleeps and rate-limit waits are always bounded by the engine's per-call deadline and your `AbortSignal`: a retry can never extend a timeout. Rate limits are enforced per HTTP request, so `anthropic({ samples: 3 })` consumes three `rpm` slots per classify call, and a transiently failing sample retries individually before counting against coverage. `tpm` uses a deficit model — no pre-call estimation; reported usage debits the bucket, and sustained heavy usage self-throttles.
+
+The buckets live on the provider *instance*: classifiers sharing one instance share its limits, and there is no hidden global registry. Construct a provider once and reuse it.
+
+---
+
 ## Anthropic
 
 `anthropic()` runs Claude models — default `claude-haiku-4-5-20251001`, reading `ANTHROPIC_API_KEY`:

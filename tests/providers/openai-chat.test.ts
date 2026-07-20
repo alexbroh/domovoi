@@ -191,6 +191,39 @@ describe("openai adapter (cl100k tokenizer-aware)", () => {
   });
 });
 
+describe("retry integration", () => {
+  beforeEach(() => {
+    createMock.mockReset();
+  });
+
+  it("retries a 429 and succeeds within the same sample() call", async () => {
+    vi.useFakeTimers();
+    try {
+      createMock
+        .mockRejectedValueOnce(Object.assign(new Error("rate limited"), { status: 429 }))
+        .mockResolvedValueOnce(logprobResponse([{ token: "yes", logprob: -0.1 }]));
+
+      const provider = openai("gpt-4o-mini", { apiKey: "test", retries: { maxAttempts: 2 } });
+      const pending = provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+      await vi.runAllTimersAsync();
+      const { distribution } = await pending;
+      expect(distribution.probs.yes).toBeGreaterThan(0);
+      expect(createMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not retry a 401", async () => {
+    createMock.mockRejectedValue(Object.assign(new Error("bad key"), { status: 401 }));
+    const provider = openai("gpt-4o-mini", { apiKey: "test", retries: { maxAttempts: 3 } });
+    await expect(provider.sample("input", ["yes", "no"], SAMPLE_OPTS)).rejects.toMatchObject({
+      code: "provider_unauthorized",
+    });
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("usage reporting", () => {
   beforeEach(() => {
     createMock.mockReset();

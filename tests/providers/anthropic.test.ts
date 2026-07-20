@@ -227,6 +227,27 @@ describe("anthropic adapter", () => {
     expect(usage).toEqual({ inputTokens: 80, outputTokens: 24 });
   });
 
+  it("retries a transiently failing sample individually before counting it failed", async () => {
+    vi.useFakeTimers();
+    try {
+      createMock
+        .mockResolvedValueOnce(textReply("positive", 95))
+        .mockRejectedValueOnce(Object.assign(new Error("hiccup"), { status: 500 }))
+        .mockResolvedValueOnce(textReply("positive", 90))
+        .mockResolvedValueOnce(textReply("positive", 92)); // the retry of sample 2
+
+      const provider = anthropic(DEFAULT_ANTHROPIC_MODEL, { retries: { maxAttempts: 2 } });
+      const pending = provider.sample("input", SPACE, SAMPLE_OPTS);
+      await vi.runAllTimersAsync();
+      const { distribution } = await pending;
+      // All three samples land in-space: the failed one recovered on retry.
+      expect(distribution.coverage).toBe(1);
+      expect(createMock).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("canonicalizes SDK errors into ProviderError when every sample fails", async () => {
     createMock.mockRejectedValue(new Error("connection reset"));
     await expect(anthropic().sample("input", SPACE, SAMPLE_OPTS)).rejects.toBeInstanceOf(

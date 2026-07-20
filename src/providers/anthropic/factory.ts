@@ -9,7 +9,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ConfigError } from "../../errors.js";
 import type { ProviderCapabilities } from "../../types.js";
-import type { Provider } from "../provider.js";
+import { validatedPricing } from "../pricing.js";
+import type { Provider, ProviderPricing } from "../provider.js";
 import { buildAnthropicAdapter } from "./adapter.js";
 
 /**
@@ -46,6 +47,12 @@ export type AnthropicProviderOptions = {
    * signal that flags likely-wrong classifications.
    */
   readonly samples?: number;
+  /**
+   * USD per million tokens, used for `Verdict.meta.cost.usd` and the
+   * `gen_ai.usage.cost_usd` span attribute. Omit to not emit USD. Reported
+   * usage (and therefore cost) sums across all `samples` calls.
+   */
+  readonly pricing?: ProviderPricing;
 };
 
 const MULTI_SAMPLE_CAPABILITIES: ProviderCapabilities = {
@@ -93,5 +100,6 @@ export function anthropic(
     capabilities: MULTI_SAMPLE_CAPABILITIES,
     client,
     samples,
+    ...(opts?.pricing !== undefined ? { pricing: validatedPricing(opts.pricing) } : {}),
   });
 }

@@ -54,6 +54,31 @@ export type SerializableError = {
   readonly stack?: string;
 };
 
+/** Backend-reported token counts for one provider call. */
+export type TokenUsage = {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+};
+
+/**
+ * What this Verdict cost, summed across every provider call the engine made
+ * for it — including calls whose provider was later escalated past or
+ * errored after responding. Only backend-*reported* usage accumulates here;
+ * calls against backends that report no usage are excluded (spans carry
+ * estimates for those, flagged `domovoi.usage.estimated`). Absent entirely
+ * when the Verdict was served without any provider call (pure cache hit).
+ */
+export type VerdictCost = {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  /**
+   * USD spend, present only when every usage-reporting provider attempted
+   * for this Verdict declared pricing — a partial sum would silently
+   * under-report, so it is omitted instead.
+   */
+  readonly usd?: number;
+};
+
 /**
  * Per-Verdict metadata recorded by the engine. Present on every variant —
  * gives observability into which provider answered, how long it took, and
@@ -77,6 +102,8 @@ export type VerdictMeta = {
   readonly coverageQuality: "exact" | "approximate" | "none";
   /** How the answering provider constructed its Distribution. */
   readonly distributionSource: "logprobs" | "multi_sample";
+  /** See [`VerdictCost`]. Absent on pure cache hits. */
+  readonly cost?: VerdictCost;
 };
 
 /**

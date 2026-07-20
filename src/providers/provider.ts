@@ -8,7 +8,7 @@
  * HTTP client.
  */
 
-import type { Distribution, PromptTemplate, ProviderCapabilities } from "../types.js";
+import type { Distribution, PromptTemplate, ProviderCapabilities, TokenUsage } from "../types.js";
 
 export type SampleOptions = {
   readonly template: PromptTemplate;
@@ -34,8 +34,32 @@ export type SampleOptions = {
 };
 
 /**
- * Implementations must honor `opts.temperature`, must forward `opts.signal`
- * to their HTTP client, and may use `opts.seed` when the backend supports it.
+ * USD pricing the engine uses to compute `Verdict.meta.cost.usd` and the
+ * `gen_ai.usage.cost_usd` span attribute. Quoted per million tokens — the
+ * unit providers publish. The engine does the multiplication; adapters only
+ * declare the numbers. Omitted pricing means USD is simply not emitted.
+ */
+export type ProviderPricing = {
+  readonly inputPerMTok: number;
+  readonly outputPerMTok: number;
+};
+
+/**
+ * What one `sample()` call produced. `usage` is the backend-reported token
+ * count for the call (summed across internal sub-requests for multi-sample
+ * adapters); omit it when the backend does not report usage — the engine
+ * then falls back to estimates for spans and budget, flagged as such, and
+ * excludes the call from `Verdict.meta.cost`.
+ */
+export type SampleOutcome<T extends string> = {
+  readonly distribution: Distribution<T>;
+  readonly usage?: TokenUsage;
+};
+
+/**
+ * Implementations must honor an explicit `opts.temperature`, must forward
+ * `opts.signal` to their HTTP client, and may use `opts.seed` when the
+ * backend supports it.
  *
  *   - `id` — unique identifier; conventionally `"factory/model"` (e.g.
  *     `"openai/gpt-4o-mini"`).
@@ -55,6 +79,8 @@ export interface Provider {
    * provider has no such options.
    */
   readonly configHash?: string;
+  /** See [`ProviderPricing`]; omit when USD cost should not be emitted. */
+  readonly pricing?: ProviderPricing;
 
   /**
    * Optional eager check fired once per provider during
@@ -68,5 +94,5 @@ export interface Provider {
     input: string,
     space: readonly T[],
     opts: SampleOptions,
-  ): Promise<Distribution<T>>;
+  ): Promise<SampleOutcome<T>>;
 }

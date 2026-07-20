@@ -22,7 +22,7 @@
  *   - emits one OTel-shaped span per provider attempt via `scope.tracer`
  */
 
-import type { Provider } from "../providers/provider.js";
+import type { Provider, SampleOutcome } from "../providers/provider.js";
 import type { ResolvedScope } from "../scope.js";
 import { currentScope } from "../scope.js";
 import { noopTracer, type Span } from "../tracer.js";
@@ -47,7 +47,7 @@ import {
   makeCancelledFromMeta,
 } from "./finalize.js";
 import { fireAndForget } from "./hooks.js";
-import { buildMeta, type MetaBuilder, makeMetaBuilder } from "./meta.js";
+import { buildMeta, type MetaBuilder, makeMetaBuilder, recordSpend } from "./meta.js";
 import { applyThresholds } from "./threshold.js";
 
 export async function decide<T extends string>(
@@ -200,9 +200,9 @@ async function attemptProvider<T extends string>(
     const timeoutSignal = AbortSignal.timeout(perCallTimeoutMs);
     const mergedSignal = mergeSignals(userSignal, timeoutSignal, scope?.signal);
 
-    let distribution: Distribution<T>;
+    let outcome: SampleOutcome<T>;
     try {
-      distribution = await loadDistribution(
+      outcome = await loadDistribution(
         provider,
         formattedInput,
         config,
@@ -226,16 +226,28 @@ async function attemptProvider<T extends string>(
       );
     }
 
+    const distribution = outcome.distribution;
     span.setAttribute("domovoi.cache.hit", meta.cacheHit);
 
     if (!meta.cacheHit) {
-      const inputTokens = estimateInputTokens(formattedInput);
-      const outputTokens = estimateOutputTokens();
-      span.setAttribute("gen_ai.usage.input_tokens", inputTokens);
-      span.setAttribute("gen_ai.usage.output_tokens", outputTokens);
+      // Backend-reported usage when the adapter surfaced it; estimates
+      // otherwise, flagged so dashboards can tell the difference. Only
+      // reported usage flows into Verdict.meta.cost.
+      const usage = outcome.usage ?? {
+        inputTokens: estimateInputTokens(formattedInput),
+        outputTokens: estimateOutputTokens(),
+      };
+      span.setAttribute("gen_ai.usage.input_tokens", usage.inputTokens);
+      span.setAttribute("gen_ai.usage.output_tokens", usage.outputTokens);
+      if (outcome.usage === undefined) {
+        span.setAttribute("domovoi.usage.estimated", true);
+      } else {
+        const callUsd = recordSpend(meta, provider, outcome.usage);
+        if (callUsd !== undefined) span.setAttribute("gen_ai.usage.cost_usd", callUsd);
+      }
       // Charge before enforce — under "throw" mode, enforce() can throw
       // BudgetExceededError which the outer catch records on the span.
-      scope?.budgetTracker?.charge(inputTokens + outputTokens);
+      scope?.budgetTracker?.charge(usage.inputTokens + usage.outputTokens);
       scope?.budgetTracker?.enforce();
     }
 

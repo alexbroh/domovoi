@@ -16,4 +16,4 @@ export {
   openai,
   openaiCompat,
 } from "./openai/index.js";
-export type { Provider, SampleOptions } from "./provider.js";
+export type { Provider, ProviderPricing, SampleOptions, SampleOutcome } from "./provider.js";

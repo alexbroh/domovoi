@@ -191,6 +191,32 @@ describe("openai adapter (cl100k tokenizer-aware)", () => {
   });
 });
 
+describe("usage reporting", () => {
+  beforeEach(() => {
+    createMock.mockReset();
+  });
+
+  it("treats a partial usage object as no usage — never NaN into cost", async () => {
+    const response = logprobResponse([{ token: "yes", logprob: -0.1 }]);
+    response.usage = { prompt_tokens: 120 }; // completion_tokens missing (compat backend)
+    createMock.mockResolvedValue(response);
+
+    const provider = openai("gpt-4o-mini", { apiKey: "test" });
+    const { usage } = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+    expect(usage).toBeUndefined();
+  });
+
+  it("maps a complete usage object onto TokenUsage", async () => {
+    const response = logprobResponse([{ token: "yes", logprob: -0.1 }]);
+    response.usage = { prompt_tokens: 120, completion_tokens: 8, total_tokens: 128 };
+    createMock.mockResolvedValue(response);
+
+    const provider = openai("gpt-4o-mini", { apiKey: "test" });
+    const { usage } = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+    expect(usage).toEqual({ inputTokens: 120, outputTokens: 8 });
+  });
+});
+
 describe("ollama adapter (string-based fallback)", () => {
   beforeEach(() => {
     createMock.mockReset();

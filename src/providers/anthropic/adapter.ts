@@ -51,22 +51,32 @@ export function buildAnthropicAdapter(args: AnthropicAdapterArgs): Provider {
       const user = renderUserPrompt(opts.template, input, space);
       const temperature = opts.temperature ?? DEFAULT_MULTI_SAMPLE_TEMPERATURE;
 
-      let replies: ReplyWithUsage[];
-      try {
-        replies = await Promise.all(
-          Array.from({ length: args.samples }, () =>
-            requestOneReply(args.client, args.modelId, system, user, temperature, opts),
-          ),
-        );
-      } catch (thrown) {
-        throw canonicalizeProviderThrow(thrown);
+      // allSettled, not all: one transient failure among K must not
+      // discard the K-1 already-billed successes — the aggregation is
+      // null-tolerant, so survivors still yield a (lower-coverage)
+      // distribution, and a rejected sample penalizes coverage exactly
+      // like an unparseable reply. All-K-failed escalates as a provider
+      // error using the first rejection.
+      const settled = await Promise.allSettled(
+        Array.from({ length: args.samples }, () =>
+          requestOneReply(args.client, args.modelId, system, user, temperature, opts),
+        ),
+      );
+      const fulfilled = settled.filter(
+        (result): result is PromiseFulfilledResult<ReplyWithUsage> => result.status === "fulfilled",
+      );
+      if (fulfilled.length === 0) {
+        const first = settled[0] as PromiseRejectedResult | undefined;
+        throw canonicalizeProviderThrow(first?.reason ?? new Error("all samples failed"));
       }
 
       const distribution = aggregateVerbalizedSamples(
         space,
-        replies.map((reply) => parseVerbalizedReply(reply.text)),
+        settled.map((result) =>
+          result.status === "fulfilled" ? parseVerbalizedReply(result.value.text) : null,
+        ),
       );
-      const usage = sumUsage(replies);
+      const usage = sumUsage(fulfilled.map((result) => result.value));
       return usage === undefined ? { distribution } : { distribution, usage };
     },
   };
@@ -91,9 +101,9 @@ type ReplyWithUsage = {
 };
 
 /**
- * Sum usage across the K samples; `undefined` when any sample lacked a
- * usage block — a partial sum would under-report, so the outcome reports
- * no usage at all and the engine falls back to estimates.
+ * Sum usage across the fulfilled samples; `undefined` when any of them
+ * lacked a usage block — a partial sum would under-report, so the outcome
+ * reports no usage at all and the engine falls back to estimates.
  */
 function sumUsage(replies: readonly ReplyWithUsage[]): TokenUsage | undefined {
   if (replies.some((reply) => reply.usage === undefined)) return undefined;
@@ -136,18 +146,15 @@ async function requestOneReply(
       code: "provider_malformed_response",
     });
   }
-  const reportedUsage = response.usage as
-    | { input_tokens: number; output_tokens: number }
-    | undefined;
+  // The SDK types make `usage` non-optional, but a non-compliant proxy
+  // behind `baseURL` may omit or truncate it; partial usage counts as no
+  // usage so a non-finite field can never reach the cost accumulator.
+  const inputTokens = response.usage?.input_tokens;
+  const outputTokens = response.usage?.output_tokens;
   return {
     text: firstBlock.text,
-    ...(reportedUsage === undefined
-      ? {}
-      : {
-          usage: {
-            inputTokens: reportedUsage.input_tokens,
-            outputTokens: reportedUsage.output_tokens,
-          },
-        }),
+    ...(Number.isFinite(inputTokens) && Number.isFinite(outputTokens)
+      ? { usage: { inputTokens: inputTokens as number, outputTokens: outputTokens as number } }
+      : {}),
   };
 }

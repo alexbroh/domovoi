@@ -94,6 +94,60 @@ describe("Verdict.meta.cost", () => {
     expect(verdict.meta.cost).toEqual({ inputTokens: 400, outputTokens: 40 });
   });
 
+  it("withholds usd when a priced provider's real call reported no usage", async () => {
+    const verdict = await classifierWith([
+      mockProvider({
+        id: "mock/silent",
+        behavior: () => WEAK,
+        // No usage: a real, billed call whose spend is unknowable.
+        pricing: { inputPerMTok: 1, outputPerMTok: 1 },
+      }),
+      mockProvider({
+        id: "mock/reporting",
+        behavior: () => STRONG,
+        usage: { inputTokens: 300, outputTokens: 30 },
+        pricing: { inputPerMTok: 10, outputPerMTok: 10 },
+      }),
+    ])("input-g");
+
+    // Tokens cover reported usage only; usd is withheld because a partial
+    // sum would silently under-report the silent provider's spend.
+    expect(verdict.meta.cost).toEqual({ inputTokens: 300, outputTokens: 30 });
+  });
+
+  it("attributes in-flight-deduped spend to the initiating caller only", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const classify = classifierWith([
+      mockProvider({
+        behavior: async () => {
+          await gate;
+          return STRONG;
+        },
+        usage: { inputTokens: 1000, outputTokens: 200 },
+        pricing: { inputPerMTok: 1, outputPerMTok: 5 },
+      }),
+    ]);
+
+    const first = classify("input-h");
+    const second = classify("input-h");
+    release();
+    const [initiator, rider] = await Promise.all([first, second]);
+
+    expect(initiator.kind).toBe("classified");
+    expect(rider.kind).toBe("classified");
+    const costs = [initiator.meta.cost, rider.meta.cost];
+    // Exactly one of the two verdicts carries the (single) spend.
+    expect(costs.filter((cost) => cost !== undefined)).toHaveLength(1);
+    expect(costs.find((cost) => cost !== undefined)).toEqual({
+      inputTokens: 1000,
+      outputTokens: 200,
+      usd: (1000 * 1 + 200 * 5) / 1e6,
+    });
+  });
+
   it("is absent on a pure cache hit — nothing was spent", async () => {
     const classify = classifierWith([
       mockProvider({

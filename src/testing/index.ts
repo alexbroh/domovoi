@@ -34,9 +34,11 @@ const DEFAULT_CAPABILITIES: ProviderCapabilities = {
   maxTopLogprobs: 100,
 };
 
-/** What `mockProvider`'s behavior may return: a bare Distribution (the
+/**
+ * What `mockProvider`'s behavior may return: a bare Distribution (the
  * common case) or a full SampleOutcome when a test needs to exercise
- * usage/cost paths. */
+ * usage/cost paths.
+ */
 export type MockBehaviorResult<T extends string> = Distribution<T> | SampleOutcome<T>;
 
 export type MockProviderOptions<T extends string = string> = {

@@ -25,7 +25,7 @@ export type AnthropicModel =
 
 /**
  * Haiku 4.5. Eval-backed: statistical parity with Sonnet 5 on short
- * embedded-decision tasks at roughly a third the price — and the sample
+ * embedded-decision tasks at meaningfully lower cost — and the sample
  * count multiplies every call, so the default model choice carries that
  * multiple.
  */
@@ -66,10 +66,12 @@ const MULTI_SAMPLE_CAPABILITIES: ProviderCapabilities = {
  * and Haiku 4.5 (the model argument is optional — a deliberate asymmetry
  * with `openai(model)`, since the default here is eval-backed).
  *
- * Multi-sample providers dilute unanimity less than logprobs providers
- * sharpen it: a 2-of-3 split lands near 0.62 top-probability. Pair with
- * `thresholds: { high: 0.75 }` so splits — which measure far less accurate
- * than unanimous answers — route to `uncertain` instead of `classified`.
+ * Multi-sample distributions run less peaked than logprobs ones even on
+ * unanimous answers, and splits are less peaked still: with typical ~90%
+ * self-reported confidence, a 2-of-3 split lands near 0.62 top-probability.
+ * Pair with `thresholds: { high: 0.75 }` so splits — which measure far less
+ * accurate than unanimous answers — route to `uncertain` instead of
+ * `classified`.
  *
  * @example
  * const cloud = anthropic();                       // Haiku 4.5, 3 samples

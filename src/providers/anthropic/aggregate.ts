@@ -53,9 +53,11 @@ export function parseVerbalizedReply(text: string): VerbalizedSample {
  * samples yield a uniform distribution with coverage 0, which the engine's
  * coverage threshold turns into an out-of-distribution Unknown.
  *
- * Label matching is exact first, then case-insensitive, so a model reply of
- * `"Billing"` still lands on the `"billing"` label without loosening what
- * counts as in-space.
+ * Label matching tries the exact label first, then falls back to
+ * case-insensitive, so a model reply of `"Billing"` still lands on the
+ * `"billing"` label — and in a space with case-variant labels, an exact
+ * reply always resolves to its own label. Non-exact replies in such a
+ * space resolve to the last case-colliding label in `space` order.
  */
 export function aggregateVerbalizedSamples<T extends string>(
   space: readonly T[],
@@ -68,7 +70,9 @@ export function aggregateVerbalizedSamples<T extends string>(
   let inSpaceCount = 0;
   for (const sample of samples) {
     if (sample === null) continue;
-    const matched = byLowercase.get(sample.label.toLowerCase());
+    const matched = (space as readonly string[]).includes(sample.label)
+      ? (sample.label as T)
+      : byLowercase.get(sample.label.toLowerCase());
     if (matched === undefined) continue;
     inSpaceCount += 1;
     const own = sample.confidence / 100;

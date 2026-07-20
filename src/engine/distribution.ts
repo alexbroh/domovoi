@@ -11,16 +11,28 @@ import {
   serializeCachedValue,
 } from "../cache.js";
 import type { Provider, SampleOutcome } from "../providers/provider.js";
-import type { Distribution } from "../types.js";
 import { DEFAULT_PER_CALL_TIMEOUT_MS, type DecideConfig } from "./config.js";
 import type { MetaBuilder } from "./meta.js";
 
 /**
  * Process-wide in-flight dedup. Concurrent calls with the same cache key
  * share a single Promise; the *raw* Distribution is shared, while each caller
- * still applies its own calibrator and thresholds.
+ * still applies its own calibrator and thresholds. Reported usage is shared
+ * too (the numbers are real for every rider), but only the initiating caller
+ * may attribute the spend to its Verdict — the call happened once and must
+ * be paid for once. `LoadedSample.sharedFromInFlight` carries that split.
  */
 const globalInFlight = new InFlight<SampleOutcome<string>>();
+
+/**
+ * A `SampleOutcome` plus how the engine obtained it: `sharedFromInFlight`
+ * marks riders on another caller's in-flight request, whose usage informs
+ * spans but must not be double-attributed to cost or double-emitted as
+ * `cost_usd`.
+ */
+export type LoadedSample<T extends string> = SampleOutcome<T> & {
+  readonly sharedFromInFlight: boolean;
+};
 
 export function computeProviderCacheKey<T extends string>(
   provider: Provider,
@@ -57,13 +69,13 @@ export async function loadDistribution<T extends string>(
   meta: MetaBuilder,
   signal: AbortSignal,
   cacheKey: string,
-): Promise<SampleOutcome<T>> {
+): Promise<LoadedSample<T>> {
   const cached = await config.cache.get(cacheKey);
   if (cached !== undefined) {
     const parsed = deserializeCachedValue<T>(cached);
     if (parsed !== undefined) {
       meta.cacheHit = true;
-      return { distribution: parsed };
+      return { distribution: parsed, sharedFromInFlight: false };
     }
     // Schema mismatch → fresh sample.
   }
@@ -78,10 +90,7 @@ async function fetchFresh<T extends string>(
   config: DecideConfig<T>,
   signal: AbortSignal,
   cacheKey: string,
-): Promise<SampleOutcome<T>> {
-  // Only the caller whose executor actually ran pays for the call: in-flight
-  // sharers ride the same Promise but must not each report the same usage
-  // into their own Verdict.meta.cost — the spend happened once.
+): Promise<LoadedSample<T>> {
   let initiatedHere = false;
   const outcome = (await globalInFlight.run(cacheKey, () => {
     initiatedHere = true;
@@ -92,9 +101,7 @@ async function fetchFresh<T extends string>(
       signal,
     });
   })) as SampleOutcome<T>;
-  if (initiatedHere) return outcome;
-  const { usage: _sharedUsage, ...withoutUsage } = outcome;
-  return withoutUsage;
+  return { ...outcome, sharedFromInFlight: !initiatedHere };
 }
 
 /**

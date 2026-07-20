@@ -9,7 +9,8 @@
 import OpenAI from "openai";
 import { cl100kTokenizer } from "../../tokenizer.js";
 import type { ProviderCapabilities } from "../../types.js";
-import type { Provider } from "../provider.js";
+import { validatedPricing } from "../pricing.js";
+import type { Provider, ProviderPricing } from "../provider.js";
 import { type AdapterArgs, buildAdapter } from "./adapter.js";
 
 /**
@@ -36,7 +37,18 @@ export type OpenAIProviderOptions = {
   readonly apiKey?: string;
   /** SDK-level request timeout. Independent of the engine's own budget. */
   readonly timeout?: number;
+  /**
+   * USD per million tokens, used for `Verdict.meta.cost.usd` and the
+   * `gen_ai.usage.cost_usd` span attribute. Omit to not emit USD.
+   */
+  readonly pricing?: ProviderPricing;
 };
+
+function pricingArg(
+  pricing: ProviderPricing | undefined,
+): { pricing: ProviderPricing } | Record<string, never> {
+  return pricing === undefined ? {} : { pricing: validatedPricing(pricing) };
+}
 
 const LOGPROBS_CAPABILITIES: ProviderCapabilities = {
   distributionSource: "logprobs",
@@ -66,6 +78,7 @@ export function openai(model: OpenAIModel, opts?: OpenAIProviderOptions): Provid
     capabilities: LOGPROBS_CAPABILITIES,
     client,
     tokenizer: cl100kTokenizer(),
+    ...pricingArg(opts?.pricing),
   });
 }
 
@@ -98,6 +111,7 @@ export function ollama(model: string, opts?: OpenAIProviderOptions): Provider {
     capabilities: LOGPROBS_CAPABILITIES,
     client,
     // No tokenizer — string-based fallback matches Ollama's varied tokenizers.
+    ...pricingArg(opts?.pricing),
   });
 }
 
@@ -156,6 +170,7 @@ export function openaiCompat(model: string, opts: OpenAICompatOptions): Provider
     tokenizerId: opts.tokenizerId ?? `compat/${model}`,
     capabilities,
     client,
+    ...pricingArg(opts.pricing),
   };
   if (opts.useCl100kTokenizer === true) {
     return buildAdapter({ ...args, tokenizer: cl100kTokenizer() });

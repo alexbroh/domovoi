@@ -109,7 +109,7 @@ describe("openai adapter (cl100k tokenizer-aware)", () => {
       ]),
     );
     const provider = openai("gpt-4o-mini", { apiKey: "sk-test" });
-    const dist = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+    const { distribution: dist } = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
     // In-space mass = 0.7 + 0.2 = 0.9; renormalized: yes=0.78, no=0.22
     expect(dist.coverage).toBeCloseTo(0.9, 6);
     expect(dist.probs.yes).toBeCloseTo(0.7 / 0.9, 6);
@@ -124,7 +124,7 @@ describe("openai adapter (cl100k tokenizer-aware)", () => {
       ]),
     );
     const provider = openai("gpt-4o-mini", { apiKey: "sk-test" });
-    const dist = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+    const { distribution: dist } = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
     expect(dist.coverage).toBe(0);
     expect(dist.probs.yes).toBe(0);
     expect(dist.probs.no).toBe(0);
@@ -218,7 +218,7 @@ describe("ollama adapter (string-based fallback)", () => {
       ]),
     );
     const provider = ollama("llama-3.1-70b");
-    const dist = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
+    const { distribution: dist } = await provider.sample("input", ["yes", "no"], SAMPLE_OPTS);
     expect(dist.coverage).toBeCloseTo(1.0, 6);
     expect(dist.probs.yes).toBeCloseTo(0.6, 6);
     expect(dist.probs.no).toBeCloseTo(0.4, 6);

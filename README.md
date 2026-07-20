@@ -508,6 +508,19 @@ A `domovoi.classify` call on gpt-4o-mini costs about $0.00004 — roughly 1/25 o
 
 The default `memoryCache` deduplicates byte-exact-match inputs within a process — significant savings on workloads with repeated inputs (log severity tags, predefined enums, boilerplate replies), little impact on free-form user content where every input is unique. The `Cache` extension point lets you back domovoi with any store for cross-process or persistent caching.
 
+### Cost observability
+
+Give a provider its pricing and every Verdict reports what it actually cost:
+
+```tsx
+const cheap = openai("gpt-4o-mini", { pricing: { inputPerMTok: 0.15, outputPerMTok: 0.6 } });
+
+const verdict = await classify(input);
+verdict.meta.cost; // { inputTokens: 182, outputTokens: 14, usd: 0.0000357 }
+```
+
+`cost` sums backend-reported usage across every provider call the engine made for that Verdict — including fallback attempts you paid for — and is absent on pure cache hits. `usd` appears only when every usage-reporting provider in the chain has pricing, so a partial chain never silently under-reports. Spans carry the same data: `gen_ai.usage.input_tokens` / `output_tokens` now use backend-reported counts when available (estimates are flagged `domovoi.usage.estimated`), and each provider-call span with pricing emits `gen_ai.usage.cost_usd`. There is no library price table to go stale — you state the two rates once at provider construction, in the per-million-token unit providers publish.
+
 Reach for deterministic tools instead when: syntactic problems with stable rules (URL parsing, format validation, tokenizers), very high volume with thin margins (100B+ ad impressions / day), or hard-real-time loops where a cache miss (~300ms p50) blows the SLA.
 
 ---

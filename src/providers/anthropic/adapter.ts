@@ -9,8 +9,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { canonicalizeProviderThrow, ProviderError } from "../../errors.js";
 import { renderSystemPrompt, renderUserPrompt } from "../../prompt.js";
-import type { Distribution, ProviderCapabilities } from "../../types.js";
-import type { Provider, SampleOptions } from "../provider.js";
+import type { ProviderCapabilities, TokenUsage } from "../../types.js";
+import type { Provider, ProviderPricing, SampleOptions, SampleOutcome } from "../provider.js";
 import { aggregateVerbalizedSamples, parseVerbalizedReply } from "./aggregate.js";
 
 // Multi-sample needs sampling variance: identical samples carry no
@@ -29,6 +29,8 @@ export type AnthropicAdapterArgs = {
   readonly client: Anthropic;
   /** Samples per classify call; ≥ 1, validated by the factory. */
   readonly samples: number;
+  /** Attached to the returned Provider; the engine computes USD from it. */
+  readonly pricing?: ProviderPricing;
 };
 
 export function buildAnthropicAdapter(args: AnthropicAdapterArgs): Provider {
@@ -38,17 +40,18 @@ export function buildAnthropicAdapter(args: AnthropicAdapterArgs): Provider {
     tokenizerId: args.tokenizerId,
     capabilities: args.capabilities,
     configHash: `samples=${args.samples}`,
+    ...(args.pricing !== undefined ? { pricing: args.pricing } : {}),
 
     async sample<T extends string>(
       input: string,
       space: readonly T[],
       opts: SampleOptions,
-    ): Promise<Distribution<T>> {
+    ): Promise<SampleOutcome<T>> {
       const system = composeSystemPrompt(opts, space);
       const user = renderUserPrompt(opts.template, input, space);
       const temperature = opts.temperature ?? DEFAULT_MULTI_SAMPLE_TEMPERATURE;
 
-      let replies: string[];
+      let replies: ReplyWithUsage[];
       try {
         replies = await Promise.all(
           Array.from({ length: args.samples }, () =>
@@ -59,7 +62,12 @@ export function buildAnthropicAdapter(args: AnthropicAdapterArgs): Provider {
         throw canonicalizeProviderThrow(thrown);
       }
 
-      return aggregateVerbalizedSamples(space, replies.map(parseVerbalizedReply));
+      const distribution = aggregateVerbalizedSamples(
+        space,
+        replies.map((reply) => parseVerbalizedReply(reply.text)),
+      );
+      const usage = sumUsage(replies);
+      return usage === undefined ? { distribution } : { distribution, usage };
     },
   };
 }
@@ -76,6 +84,28 @@ function composeSystemPrompt(opts: SampleOptions, space: readonly string[]): str
     : `${templateSystem}\n\n${confidenceInstruction}`;
 }
 
+type ReplyWithUsage = {
+  readonly text: string;
+  /** Absent when the backend response carried no usage block. */
+  readonly usage?: TokenUsage;
+};
+
+/**
+ * Sum usage across the K samples; `undefined` when any sample lacked a
+ * usage block — a partial sum would under-report, so the outcome reports
+ * no usage at all and the engine falls back to estimates.
+ */
+function sumUsage(replies: readonly ReplyWithUsage[]): TokenUsage | undefined {
+  if (replies.some((reply) => reply.usage === undefined)) return undefined;
+  return replies.reduce(
+    (total, reply) => ({
+      inputTokens: total.inputTokens + (reply.usage?.inputTokens ?? 0),
+      outputTokens: total.outputTokens + (reply.usage?.outputTokens ?? 0),
+    }),
+    { inputTokens: 0, outputTokens: 0 },
+  );
+}
+
 async function requestOneReply(
   client: Anthropic,
   modelId: string,
@@ -83,7 +113,7 @@ async function requestOneReply(
   user: string,
   temperature: number,
   opts: SampleOptions,
-): Promise<string> {
+): Promise<ReplyWithUsage> {
   const requestOpts: { signal?: AbortSignal; timeout: number } = {
     timeout: opts.timeoutMs,
   };
@@ -106,5 +136,18 @@ async function requestOneReply(
       code: "provider_malformed_response",
     });
   }
-  return firstBlock.text;
+  const reportedUsage = response.usage as
+    | { input_tokens: number; output_tokens: number }
+    | undefined;
+  return {
+    text: firstBlock.text,
+    ...(reportedUsage === undefined
+      ? {}
+      : {
+          usage: {
+            inputTokens: reportedUsage.input_tokens,
+            outputTokens: reportedUsage.output_tokens,
+          },
+        }),
+  };
 }

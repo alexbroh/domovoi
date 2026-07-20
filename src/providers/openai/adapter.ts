@@ -10,8 +10,8 @@ import type OpenAI from "openai";
 import { ConfigError, canonicalizeProviderThrow, ProviderError } from "../../errors.js";
 import { renderSystemPrompt, renderUserPrompt } from "../../prompt.js";
 import { buildLogitBias, findFirstTokenCollision, type Tokenizer } from "../../tokenizer.js";
-import type { Distribution, ProviderCapabilities } from "../../types.js";
-import type { Provider, SampleOptions } from "../provider.js";
+import type { ProviderCapabilities, TokenUsage } from "../../types.js";
+import type { Provider, ProviderPricing, SampleOptions, SampleOutcome } from "../provider.js";
 import { buildDistributionByStringMatch, buildDistributionByTokenId } from "./distribution.js";
 
 // Positive bias on in-space first-tokens only. Nudges the model toward
@@ -29,6 +29,8 @@ export type AdapterArgs = {
    * When omitted, the adapter falls back to string-based logprob matching.
    */
   readonly tokenizer?: Tokenizer;
+  /** Attached to the returned Provider; the engine computes USD from it. */
+  readonly pricing?: ProviderPricing;
 };
 
 export function buildAdapter(args: AdapterArgs): Provider {
@@ -53,13 +55,14 @@ export function buildAdapter(args: AdapterArgs): Provider {
     modelId: args.modelId,
     tokenizerId: args.tokenizerId,
     capabilities: args.capabilities,
+    ...(args.pricing !== undefined ? { pricing: args.pricing } : {}),
     ...eagerValidate,
 
     async sample<T extends string>(
       input: string,
       space: readonly T[],
       opts: SampleOptions,
-    ): Promise<Distribution<T>> {
+    ): Promise<SampleOutcome<T>> {
       // Defense-in-depth: catches callers that bypassed `validateClassifierConfig`.
       let logitBias: Record<string, number> | undefined;
       let inSpaceFirstTokenIds: Map<number, T> | undefined;
@@ -114,9 +117,12 @@ export function buildAdapter(args: AdapterArgs): Provider {
         });
       }
 
-      return tokenizer !== undefined && inSpaceFirstTokenIds !== undefined
-        ? buildDistributionByTokenId(space, tokenLogprobs, inSpaceFirstTokenIds, tokenizer)
-        : buildDistributionByStringMatch(space, tokenLogprobs);
+      const distribution =
+        tokenizer !== undefined && inSpaceFirstTokenIds !== undefined
+          ? buildDistributionByTokenId(space, tokenLogprobs, inSpaceFirstTokenIds, tokenizer)
+          : buildDistributionByStringMatch(space, tokenLogprobs);
+      const usage = usageFromResponse(response);
+      return usage === undefined ? { distribution } : { distribution, usage };
     },
   };
 }
@@ -147,4 +153,10 @@ function mapFirstTokenIds<T extends string>(
     map.set(tokenizer.firstTokenId(label), label);
   }
   return map;
+}
+
+function usageFromResponse(response: OpenAI.Chat.ChatCompletion): TokenUsage | undefined {
+  const reported = response.usage;
+  if (reported === undefined) return undefined;
+  return { inputTokens: reported.prompt_tokens, outputTokens: reported.completion_tokens };
 }

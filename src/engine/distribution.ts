@@ -10,7 +10,7 @@ import {
   InFlight,
   serializeCachedValue,
 } from "../cache.js";
-import type { Provider } from "../providers/provider.js";
+import type { Provider, SampleOutcome } from "../providers/provider.js";
 import type { Distribution } from "../types.js";
 import { DEFAULT_PER_CALL_TIMEOUT_MS, type DecideConfig } from "./config.js";
 import type { MetaBuilder } from "./meta.js";
@@ -20,7 +20,7 @@ import type { MetaBuilder } from "./meta.js";
  * share a single Promise; the *raw* Distribution is shared, while each caller
  * still applies its own calibrator and thresholds.
  */
-const globalInFlight = new InFlight<Distribution<string>>();
+const globalInFlight = new InFlight<SampleOutcome<string>>();
 
 export function computeProviderCacheKey<T extends string>(
   provider: Provider,
@@ -57,18 +57,18 @@ export async function loadDistribution<T extends string>(
   meta: MetaBuilder,
   signal: AbortSignal,
   cacheKey: string,
-): Promise<Distribution<T>> {
+): Promise<SampleOutcome<T>> {
   const cached = await config.cache.get(cacheKey);
   if (cached !== undefined) {
     const parsed = deserializeCachedValue<T>(cached);
     if (parsed !== undefined) {
       meta.cacheHit = true;
-      return parsed;
+      return { distribution: parsed };
     }
     // Schema mismatch → fresh sample.
   }
   const fresh = await fetchFresh(provider, formattedInput, config, signal, cacheKey);
-  await config.cache.set(cacheKey, serializeCachedValue(fresh));
+  await config.cache.set(cacheKey, serializeCachedValue(fresh.distribution));
   return fresh;
 }
 
@@ -78,15 +78,23 @@ async function fetchFresh<T extends string>(
   config: DecideConfig<T>,
   signal: AbortSignal,
   cacheKey: string,
-): Promise<Distribution<T>> {
-  return globalInFlight.run(cacheKey, () =>
-    provider.sample<T>(formattedInput, config.space, {
+): Promise<SampleOutcome<T>> {
+  // Only the caller whose executor actually ran pays for the call: in-flight
+  // sharers ride the same Promise but must not each report the same usage
+  // into their own Verdict.meta.cost — the spend happened once.
+  let initiatedHere = false;
+  const outcome = (await globalInFlight.run(cacheKey, () => {
+    initiatedHere = true;
+    return provider.sample<T>(formattedInput, config.space, {
       template: config.template,
       temperature: config.temperature,
       timeoutMs: config.budget?.perCallTimeoutMs ?? DEFAULT_PER_CALL_TIMEOUT_MS,
       signal,
-    }),
-  ) as Promise<Distribution<T>>;
+    });
+  })) as SampleOutcome<T>;
+  if (initiatedHere) return outcome;
+  const { usage: _sharedUsage, ...withoutUsage } = outcome;
+  return withoutUsage;
 }
 
 /**

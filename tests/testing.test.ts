@@ -72,7 +72,7 @@ describe("mockProvider", () => {
       behavior: () => distribution,
     });
     const result = await p.sample("ignored", ["yes", "no"] as const, SAMPLE_OPTS);
-    expect(result).toEqual(distribution);
+    expect(result).toEqual({ distribution });
   });
 
   it("supports an async behavior callback", async () => {
@@ -82,9 +82,9 @@ describe("mockProvider", () => {
         return { probs: { a: 0.7, b: 0.3 }, coverage: 0.85 };
       },
     });
-    const result = await p.sample("input", ["a", "b"] as const, SAMPLE_OPTS);
-    expect(result.probs).toEqual({ a: 0.7, b: 0.3 });
-    expect(result.coverage).toBe(0.85);
+    const { distribution } = await p.sample("input", ["a", "b"] as const, SAMPLE_OPTS);
+    expect(distribution.probs).toEqual({ a: 0.7, b: 0.3 });
+    expect(distribution.coverage).toBe(0.85);
   });
 
   it("throws synchronously if signal is pre-aborted with a string reason", async () => {

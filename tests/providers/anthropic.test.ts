@@ -38,6 +38,7 @@ const SPACE = ["positive", "negative", "neutral"] as const;
 function textReply(label: string, confidence: number): Record<string, unknown> {
   return {
     content: [{ type: "text", text: `{"label": "${label}", "confidence": ${confidence}}` }],
+    usage: { input_tokens: 40, output_tokens: 12 },
   };
 }
 
@@ -136,11 +137,24 @@ describe("anthropic adapter", () => {
       .mockResolvedValueOnce(textReply("neutral", 60));
 
     const provider = anthropic();
-    const distribution = await provider.sample("great product", SPACE, SAMPLE_OPTS);
+    const { distribution, usage } = await provider.sample("great product", SPACE, SAMPLE_OPTS);
 
     expect(createMock).toHaveBeenCalledTimes(3);
     expect(distribution.coverage).toBe(1);
     expect(distribution.probs.positive).toBeGreaterThan(distribution.probs.neutral);
+    // Usage sums across the three samples.
+    expect(usage).toEqual({ inputTokens: 120, outputTokens: 36 });
+  });
+
+  it("reports no usage when any sample response lacks a usage block", async () => {
+    createMock
+      .mockResolvedValueOnce(textReply("positive", 95))
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: '{"label": "positive", "confidence": 90}' }],
+      })
+      .mockResolvedValueOnce(textReply("positive", 92));
+    const { usage } = await anthropic().sample("input", SPACE, SAMPLE_OPTS);
+    expect(usage).toBeUndefined();
   });
 
   it("defaults to temperature 1 and honors an explicit temperature", async () => {

@@ -84,8 +84,6 @@ export function buildAdapter(args: AdapterArgs): Provider {
 
       let response: OpenAI.Chat.ChatCompletion;
       try {
-        // Canonicalize inside the governed call so the retry policy sees
-        // typed codes (429 -> provider_rate_limit etc.), not raw SDK errors.
         const params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
           model: args.modelId,
           messages,
@@ -104,12 +102,15 @@ export function buildAdapter(args: AdapterArgs): Provider {
           timeout: opts.timeoutMs,
         };
         if (opts.signal !== undefined) requestOpts.signal = opts.signal;
+        // Canonicalize inside the governed call so the retry policy sees
+        // typed codes (429 -> provider_rate_limit etc.), not raw SDK errors.
         response = await args.governor.execute(
           () =>
             args.client.chat.completions.create(params, requestOpts).catch((thrown) => {
               throw canonicalizeProviderThrow(thrown);
             }),
           opts.signal,
+          opts.timeoutMs,
         );
       } catch (err) {
         throw canonicalizeProviderThrow(err);

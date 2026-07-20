@@ -12,9 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Hoisted mock so the SDK constructor is replaced before anthropic() is imported.
 const createMock = vi.hoisted(() => vi.fn());
 
+const anthropicCtorArgs = vi.hoisted(() => ({ last: undefined as unknown }));
+
 vi.mock("@anthropic-ai/sdk", () => {
   class MockAnthropic {
     messages = { create: createMock };
+    constructor(options: unknown) {
+      anthropicCtorArgs.last = options;
+    }
   }
   return { default: MockAnthropic, Anthropic: MockAnthropic };
 });
@@ -187,6 +192,11 @@ describe("anthropic adapter", () => {
     const request = createMock.mock.calls[0]?.[0] as { system: string };
     expect(request.system).toContain('"confidence": <integer 0-100>');
     expect(request.system).toContain('"positive"');
+  });
+
+  it("constructs the SDK client with its internal retries disabled", () => {
+    anthropic(DEFAULT_ANTHROPIC_MODEL, { apiKey: "test" });
+    expect(anthropicCtorArgs.last).toMatchObject({ maxRetries: 0 });
   });
 
   it("uses the default model and exposes samples in configHash", () => {

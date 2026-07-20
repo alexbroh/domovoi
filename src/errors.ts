@@ -116,7 +116,9 @@ export class BudgetExceededError extends DomovoiError {
 }
 
 /**
- * Wraps any non-DomovoiError thrown value in `ProviderError({ cause })`.
+ * Wraps any non-DomovoiError thrown value in `ProviderError({ cause })`,
+ * with the code derived from the thrown value's HTTP `status` when present
+ * (see `codeFromHttpStatus`) and `"provider_network"` otherwise.
  * `DomovoiError` subtypes — including `ProviderError` subclasses defined by
  * external Provider implementations — pass through unchanged.
  */

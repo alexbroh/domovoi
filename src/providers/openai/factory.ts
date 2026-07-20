@@ -97,6 +97,10 @@ export function openai(model: OpenAIModel, opts?: OpenAIProviderOptions): Provid
     apiKey: opts?.apiKey ?? process.env.OPENAI_API_KEY,
     baseURL: opts?.baseURL,
     timeout: opts?.timeout,
+    // RequestGovernor owns retry policy exclusively; the SDK's silent
+    // default (2 transport retries on 429/5xx) would compound with it and
+    // bypass the rpm bucket.
+    maxRetries: 0,
   });
   return buildAdapter({
     id: `openai/${model}`,
@@ -130,6 +134,10 @@ export function ollama(model: string, opts?: OpenAIProviderOptions): Provider {
     apiKey: opts?.apiKey ?? OLLAMA_DEFAULT_API_KEY,
     baseURL: opts?.baseURL ?? OLLAMA_DEFAULT_BASE_URL,
     timeout: opts?.timeout,
+    // RequestGovernor owns retry policy exclusively; the SDK's silent
+    // default (2 transport retries on 429/5xx) would compound with it and
+    // bypass the rpm bucket.
+    maxRetries: 0,
   });
   return buildAdapter({
     id: `ollama/${model}`,
@@ -177,6 +185,8 @@ export function openaiCompat(model: string, opts: OpenAICompatOptions): Provider
     apiKey: opts.apiKey,
     baseURL: opts.baseURL,
     timeout: opts.timeout,
+    // RequestGovernor owns retry policy exclusively (see openai()).
+    maxRetries: 0,
   });
   const capabilities: ProviderCapabilities = {
     ...LOGPROBS_CAPABILITIES,

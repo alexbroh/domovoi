@@ -70,6 +70,7 @@ export function buildAnthropicAdapter(args: AnthropicAdapterArgs): Provider {
                 },
               ),
             opts.signal,
+            opts.timeoutMs,
           ),
         ),
       );

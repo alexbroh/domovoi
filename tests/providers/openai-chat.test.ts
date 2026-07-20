@@ -11,9 +11,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Hoisted mock so the SDK constructor is replaced before openai() is imported.
 const createMock = vi.hoisted(() => vi.fn());
 
+const openaiCtorArgs = vi.hoisted(() => ({ last: undefined as unknown }));
+
 vi.mock("openai", () => {
   class MockOpenAI {
     chat = { completions: { create: createMock } };
+    constructor(options: unknown) {
+      openaiCtorArgs.last = options;
+    }
   }
   return { default: MockOpenAI, OpenAI: MockOpenAI };
 });
@@ -192,6 +197,13 @@ describe("openai adapter (cl100k tokenizer-aware)", () => {
 });
 
 describe("retry integration", () => {
+  it("constructs the SDK client with its internal retries disabled", () => {
+    openai("gpt-4o-mini", { apiKey: "test" });
+    // The governor owns retry policy exclusively; the SDK's silent default
+    // (2 transport retries) would compound with it and bypass the buckets.
+    expect(openaiCtorArgs.last).toMatchObject({ maxRetries: 0 });
+  });
+
   beforeEach(() => {
     createMock.mockReset();
   });

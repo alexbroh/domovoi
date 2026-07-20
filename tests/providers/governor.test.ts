@@ -134,6 +134,43 @@ describe("RequestGovernor rate limits", () => {
     await expect(second).resolves.toBe("ok");
   });
 
+  it("paces a concurrent burst instead of letting it race past the bucket", async () => {
+    const limited = new RequestGovernor(undefined, { rpm: 1 }); // single-slot bucket
+    const order: number[] = [];
+    const request = (id: number) => () => {
+      order.push(id);
+      return Promise.resolve("ok");
+    };
+
+    // Fired in the same tick — the race the atomic turn queue prevents:
+    // before the fix, all three read the same pre-commit bucket level and
+    // passed immediately, driving a "hard" bucket to -2.
+    const burst = [
+      limited.execute(request(0), undefined),
+      limited.execute(request(1), undefined),
+      limited.execute(request(2), undefined),
+    ];
+    await vi.advanceTimersByTimeAsync(0);
+    expect(order).toEqual([0]); // only the first slot is free immediately
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(order).toEqual([0, 1]);
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(order).toEqual([0, 1, 2]);
+    await Promise.all(burst);
+  });
+
+  it("fails fast with provider_timeout when the wait can never fit the deadline", async () => {
+    const limited = new RequestGovernor(undefined, { rpm: 1 });
+    const request = vi.fn().mockResolvedValue("ok");
+
+    await limited.execute(request, undefined, 10_000);
+    // Next slot needs ~60s; the 10s deadline can never cover it.
+    await expect(limited.execute(request, undefined, 10_000)).rejects.toMatchObject({
+      code: "provider_timeout",
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("abort during a rate-limit wait rejects immediately", async () => {
     const limited = new RequestGovernor(undefined, { rpm: 1 });
     const controller = new AbortController();

@@ -64,12 +64,13 @@ export type AnthropicProviderOptions = {
    * Transient-failure retry policy, applied per sample request — one
    * flaky sample among `samples` retries individually before counting
    * against coverage. Always bounded by the engine's per-call deadline.
+   * Omit to never retry.
    */
   readonly retries?: RetryOptions;
   /**
    * Request/token-per-minute budgets shared by every classifier holding
    * this provider *instance*. Note each classify call issues `samples`
-   * requests — size `rpm` accordingly.
+   * requests — size `rpm` accordingly. Omit to never throttle.
    */
   readonly rateLimit?: RateLimitOptions;
 };
@@ -112,6 +113,10 @@ export function anthropic(
     apiKey: opts?.apiKey ?? process.env.ANTHROPIC_API_KEY,
     ...(opts?.baseURL !== undefined ? { baseURL: opts.baseURL } : {}),
     ...(opts?.timeout !== undefined ? { timeout: opts.timeout } : {}),
+    // RequestGovernor owns retry policy exclusively; the SDK's silent
+    // default (2 transport retries on 429/5xx) would compound with it and
+    // bypass the rpm bucket.
+    maxRetries: 0,
   });
 
   return buildAnthropicAdapter({

@@ -15,7 +15,11 @@ import type { TokenUsage } from "../types.js";
 export type RetryOptions = {
   /** Total attempts including the first; `1` disables retrying. */
   readonly maxAttempts: number;
-  /** Base backoff delay before the first retry. Default 200 ms. */
+  /**
+   * Base backoff delay before the first retry. Default 200 ms. `0` is
+   * accepted but disables backoff pacing entirely (every retry fires
+   * immediately) — pair it with `rateLimit` or not at all.
+   */
   readonly initialDelayMs?: number;
 };
 
@@ -26,7 +30,10 @@ export type RateLimitOptions = {
    * Tokens per minute, enforced as a deficit model: reported usage debits
    * the bucket after each call, and a bucket in deficit delays subsequent
    * requests until refill. No pre-call estimation — the first request
-   * always passes, sustained heavy usage self-throttles.
+   * always passes, sustained heavy usage self-throttles. Calls whose
+   * response never reports usage (e.g. malformed replies) are billed by
+   * the provider but invisible to this bucket — it meters reported usage,
+   * not invoices.
    */
   readonly tpm?: number;
 };
@@ -43,6 +50,11 @@ const RETRYABLE_CODES = new Set([
   "provider_server_error",
 ]);
 
+/**
+ * Throws `ConfigError` unless `maxAttempts` is an integer >= 1 and
+ * `initialDelayMs` (if given) is finite and >= 0. Returns `retries`
+ * unchanged so factories can validate-and-spread in one expression.
+ */
 export function validatedRetryOptions(retries: RetryOptions): RetryOptions {
   if (!Number.isInteger(retries.maxAttempts) || retries.maxAttempts < 1) {
     throw new ConfigError(
@@ -62,6 +74,11 @@ export function validatedRetryOptions(retries: RetryOptions): RetryOptions {
   return retries;
 }
 
+/**
+ * Throws `ConfigError` unless every given rate is finite and > 0. Returns
+ * `rateLimit` unchanged so factories can validate-and-spread in one
+ * expression.
+ */
 export function validatedRateLimitOptions(rateLimit: RateLimitOptions): RateLimitOptions {
   for (const [limitName, limit] of Object.entries(rateLimit)) {
     if (limit !== undefined && (!Number.isFinite(limit) || limit <= 0)) {
@@ -107,11 +124,15 @@ class TokenBucket {
     return Math.ceil((needed / this.capacityPerMinute) * 60_000);
   }
 
+  /** Pre-request slot consumption (rpm) — call only while holding the
+   * governor's turn, or concurrent callers race past the capacity check. */
   take(amount: number): void {
     this.refill();
     this.level -= amount;
   }
 
+  /** Post-hoc usage settlement (tpm deficit model) — same arithmetic as
+   * `take`, kept separate because the call sites mean different things. */
   debit(amount: number): void {
     this.refill();
     this.level -= amount;
@@ -158,6 +179,7 @@ export class RequestGovernor {
   private readonly tokenBucket: TokenBucket | undefined;
   private readonly maxAttempts: number;
   private readonly initialDelayMs: number;
+  private turnQueue: Promise<unknown> = Promise.resolve();
 
   constructor(retries: RetryOptions | undefined, rateLimit: RateLimitOptions | undefined) {
     this.maxAttempts = retries?.maxAttempts ?? 1;
@@ -169,39 +191,44 @@ export class RequestGovernor {
   }
 
   /**
-   * Runs `request` under the rate limits and retry policy. Waits (bounded
-   * by `signal`) for bucket capacity before each attempt; retries
-   * transient `ProviderError`s (`provider_network`, `provider_rate_limit`,
+   * Runs `request` under the rate limits and retry policy. Acquires
+   * bucket capacity atomically (concurrent calls queue for their turn, so
+   * a burst can never race past the capacity check); retries transient
+   * `ProviderError`s (`provider_network`, `provider_rate_limit`,
    * `provider_server_error`) with exponential full-jitter backoff. An
    * aborted `signal` — the engine's merged per-call timeout + caller
    * cancellation — stops everything immediately: deadlines always win,
    * and no retry ever extends them.
+   *
+   * A rate-limit wait that could never finish inside `timeoutMs` fails
+   * fast with `provider_timeout` instead of sleeping into an ambiguous
+   * abort — a manufactured timeout that never touched the network should
+   * not masquerade as a provider one. Rule of thumb: the worst-case rpm
+   * wait is `60000/rpm` ms; keep that below the per-call timeout.
    */
-  async execute<T>(request: () => Promise<T>, signal: AbortSignal | undefined): Promise<T> {
-    let lastThrown: unknown;
+  async execute<T>(
+    request: () => Promise<T>,
+    signal: AbortSignal | undefined,
+    timeoutMs?: number,
+  ): Promise<T> {
     for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
       if (attempt > 0) {
         const backoffCap = this.initialDelayMs * 2 ** (attempt - 1);
         await sleep(Math.random() * backoffCap, signal);
       }
-      await this.waitForCapacity(signal);
-      this.requestBucket?.take(1);
+      await this.acquireSlot(signal, timeoutMs);
       try {
         return await request();
       } catch (thrown) {
-        lastThrown = thrown;
         if (signal?.aborted || !isRetryable(thrown) || attempt === this.maxAttempts - 1) {
           throw thrown;
         }
       }
     }
-    // Unreachable: the loop always returns or throws. Kept for the
-    // compiler; a DomovoiError here would indicate a governor bug.
-    throw lastThrown instanceof Error
-      ? lastThrown
-      : new DomovoiError("Request governor exhausted attempts without a thrown cause.", {
-          code: "provider_network",
-        });
+    // Unreachable: the loop always returns or throws (`maxAttempts >= 1`).
+    throw new DomovoiError("Request governor exhausted attempts without a thrown cause.", {
+      code: "provider_network",
+    });
   }
 
   /** Debits reported usage into the tpm bucket (deficit model). */
@@ -209,12 +236,31 @@ export class RequestGovernor {
     this.tokenBucket?.debit(usage.inputTokens + usage.outputTokens);
   }
 
-  private async waitForCapacity(signal: AbortSignal | undefined): Promise<void> {
-    const waits = [
-      this.requestBucket?.msUntilAvailable(1) ?? 0,
-      this.tokenBucket?.msUntilAvailable(0) ?? 0,
-    ];
-    const waitMs = Math.max(...waits);
-    if (waitMs > 0) await sleep(waitMs, signal);
+  /**
+   * Serialized check-wait-take: each caller holds the turn from capacity
+   * check through slot consumption, so concurrent bursts pace out instead
+   * of all reading the same pre-commit bucket level.
+   */
+  private acquireSlot(
+    signal: AbortSignal | undefined,
+    timeoutMs: number | undefined,
+  ): Promise<void> {
+    const turn = this.turnQueue.then(async () => {
+      const waitMs = Math.max(
+        this.requestBucket?.msUntilAvailable(1) ?? 0,
+        this.tokenBucket?.msUntilAvailable(0) ?? 0,
+      );
+      if (timeoutMs !== undefined && waitMs > timeoutMs) {
+        throw new ProviderError(
+          `Rate-limit wait of ${waitMs}ms exceeds the ${timeoutMs}ms per-call deadline; raise the per-call timeout or lower rpm/tpm.`,
+          { code: "provider_timeout" },
+        );
+      }
+      if (waitMs > 0) await sleep(waitMs, signal);
+      this.requestBucket?.take(1);
+    });
+    // One caller's abort must not wedge the queue for everyone behind it.
+    this.turnQueue = turn.catch(() => {});
+    return turn;
   }
 }

@@ -9,6 +9,13 @@
 import OpenAI from "openai";
 import { cl100kTokenizer } from "../../tokenizer.js";
 import type { ProviderCapabilities } from "../../types.js";
+import {
+  type RateLimitOptions,
+  RequestGovernor,
+  type RetryOptions,
+  validatedRateLimitOptions,
+  validatedRetryOptions,
+} from "../governor.js";
 import { validatedPricing } from "../pricing.js";
 import type { Provider, ProviderPricing } from "../provider.js";
 import { type AdapterArgs, buildAdapter } from "./adapter.js";
@@ -42,7 +49,27 @@ export type OpenAIProviderOptions = {
    * `gen_ai.usage.cost_usd` span attribute. Omit to not emit USD.
    */
   readonly pricing?: ProviderPricing;
+  /**
+   * Transient-failure retry policy for this provider's requests
+   * (`provider_network` / `provider_rate_limit` / `provider_server_error`),
+   * exponential full-jitter backoff, always bounded by the engine's
+   * per-call deadline. Omit to never retry.
+   */
+  readonly retries?: RetryOptions;
+  /**
+   * Request/token-per-minute budgets shared by every classifier holding
+   * this provider *instance* — sharing the limit means sharing the
+   * instance. Omit to never throttle.
+   */
+  readonly rateLimit?: RateLimitOptions;
 };
+
+function governorFor(opts: OpenAIProviderOptions | undefined): RequestGovernor {
+  return new RequestGovernor(
+    opts?.retries === undefined ? undefined : validatedRetryOptions(opts.retries),
+    opts?.rateLimit === undefined ? undefined : validatedRateLimitOptions(opts.rateLimit),
+  );
+}
 
 function pricingArg(
   pricing: ProviderPricing | undefined,
@@ -70,6 +97,10 @@ export function openai(model: OpenAIModel, opts?: OpenAIProviderOptions): Provid
     apiKey: opts?.apiKey ?? process.env.OPENAI_API_KEY,
     baseURL: opts?.baseURL,
     timeout: opts?.timeout,
+    // RequestGovernor owns retry policy exclusively; the SDK's silent
+    // default (2 transport retries on 429/5xx) would compound with it and
+    // bypass the rpm bucket.
+    maxRetries: 0,
   });
   return buildAdapter({
     id: `openai/${model}`,
@@ -78,6 +109,7 @@ export function openai(model: OpenAIModel, opts?: OpenAIProviderOptions): Provid
     capabilities: LOGPROBS_CAPABILITIES,
     client,
     tokenizer: cl100kTokenizer(),
+    governor: governorFor(opts),
     ...pricingArg(opts?.pricing),
   });
 }
@@ -102,6 +134,10 @@ export function ollama(model: string, opts?: OpenAIProviderOptions): Provider {
     apiKey: opts?.apiKey ?? OLLAMA_DEFAULT_API_KEY,
     baseURL: opts?.baseURL ?? OLLAMA_DEFAULT_BASE_URL,
     timeout: opts?.timeout,
+    // RequestGovernor owns retry policy exclusively; the SDK's silent
+    // default (2 transport retries on 429/5xx) would compound with it and
+    // bypass the rpm bucket.
+    maxRetries: 0,
   });
   return buildAdapter({
     id: `ollama/${model}`,
@@ -111,6 +147,7 @@ export function ollama(model: string, opts?: OpenAIProviderOptions): Provider {
     capabilities: LOGPROBS_CAPABILITIES,
     client,
     // No tokenizer — string-based fallback matches Ollama's varied tokenizers.
+    governor: governorFor(opts),
     ...pricingArg(opts?.pricing),
   });
 }
@@ -148,6 +185,8 @@ export function openaiCompat(model: string, opts: OpenAICompatOptions): Provider
     apiKey: opts.apiKey,
     baseURL: opts.baseURL,
     timeout: opts.timeout,
+    // RequestGovernor owns retry policy exclusively (see openai()).
+    maxRetries: 0,
   });
   const capabilities: ProviderCapabilities = {
     ...LOGPROBS_CAPABILITIES,
@@ -170,6 +209,7 @@ export function openaiCompat(model: string, opts: OpenAICompatOptions): Provider
     tokenizerId: opts.tokenizerId ?? `compat/${model}`,
     capabilities,
     client,
+    governor: governorFor(opts),
     ...pricingArg(opts.pricing),
   };
   if (opts.useCl100kTokenizer === true) {

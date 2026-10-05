@@ -8,6 +8,7 @@ export {
   anthropic,
   DEFAULT_ANTHROPIC_MODEL,
 } from "./anthropic/index.js";
+export type { RateLimitOptions, RetryOptions } from "./governor.js";
 export {
   type OpenAICompatOptions,
   type OpenAIModel,

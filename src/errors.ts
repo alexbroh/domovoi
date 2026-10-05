@@ -116,7 +116,9 @@ export class BudgetExceededError extends DomovoiError {
 }
 
 /**
- * Wraps any non-DomovoiError thrown value in `ProviderError({ cause })`.
+ * Wraps any non-DomovoiError thrown value in `ProviderError({ cause })`,
+ * with the code derived from the thrown value's HTTP `status` when present
+ * (see `codeFromHttpStatus`) and `"provider_network"` otherwise.
  * `DomovoiError` subtypes — including `ProviderError` subclasses defined by
  * external Provider implementations — pass through unchanged.
  */
@@ -124,7 +126,7 @@ export function canonicalizeProviderThrow(thrown: unknown): DomovoiError {
   if (thrown instanceof DomovoiError) return thrown;
   if (thrown instanceof Error) {
     return new ProviderError(thrown.message || "Provider call failed", {
-      code: "provider_network",
+      code: codeFromHttpStatus(thrown),
       cause: thrown,
     });
   }
@@ -132,6 +134,20 @@ export function canonicalizeProviderThrow(thrown: unknown): DomovoiError {
     code: "provider_network",
     cause: thrown,
   });
+}
+
+/**
+ * Maps the `status` both provider SDKs attach to their API errors onto the
+ * typed error codes — the discrimination the per-provider retry policy
+ * relies on (429/5xx retry; 401/403 never heal by waiting).
+ */
+function codeFromHttpStatus(error: Error): ErrorCode {
+  const status = (error as { status?: unknown }).status;
+  if (typeof status !== "number") return "provider_network";
+  if (status === 401 || status === 403) return "provider_unauthorized";
+  if (status === 429) return "provider_rate_limit";
+  if (status >= 500) return "provider_server_error";
+  return "provider_network";
 }
 
 /**

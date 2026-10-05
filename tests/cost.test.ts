@@ -168,13 +168,12 @@ describe("Verdict.meta.cost", () => {
 });
 
 describe("pricing validation", () => {
-  it.each([
-    Number.NaN,
-    -1,
-    Number.POSITIVE_INFINITY,
-  ])("rejects inputPerMTok=%s at construction", (rate) => {
-    expect(() => mockProviderWithFactoryPricing(rate)).toThrow(/pricing\.inputPerMTok/);
-  });
+  it.each([Number.NaN, -1, Number.POSITIVE_INFINITY])(
+    "rejects inputPerMTok=%s at construction",
+    (rate) => {
+      expect(() => mockProviderWithFactoryPricing(rate)).toThrow(/pricing\.inputPerMTok/);
+    },
+  );
 });
 
 // The factories share validatedPricing; exercise it through the anthropic

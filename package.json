@@ -77,7 +77,7 @@
     "url": "https://github.com/alexbroh/domovoi/issues"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
+    "@anthropic-ai/sdk": "^0.133.0",
     "openai": "^7.27.0",
     "tiktoken": "^1.0.22"
   },

@@ -83,11 +83,11 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
-    "@biomejs/biome": "^2.5.15",
+    "@biomejs/biome": "^2.6.2",
     "@changesets/cli": "^2.31.0",
     "@types/node": "^25.9.1",
     "@vitest/coverage-v8": "^4.1.8",
-    "knip": "^6.39.0",
+    "knip": "^6.42.1",
     "publint": "^0.3.25",
     "tsup": "^8.5.1",
     "tsx": "^4.23.15",
